@@ -23,10 +23,11 @@ if ($uri !== '/' && is_file(__DIR__ . '/../public' . $uri)) {
 require __DIR__ . '/../src/Money.php';
 require __DIR__ . '/../src/Cart.php';
 require __DIR__ . '/../src/View.php';
-require __DIR__ . '/../src/Csrf.php';
 require __DIR__ . '/../src/Database.php';
 require __DIR__ . '/../src/ShopRepository.php';
 require __DIR__ . '/../src/ProductRepository.php';
+require __DIR__ . '/../src/OutboundLink.php';
+require __DIR__ . '/../src/CategoryFilter.php';
 
 use Versandkostenretter\Database;
 
@@ -45,6 +46,11 @@ CREATE TABLE VSKR_shops (
     shipping_cost NUMERIC NOT NULL,
     free_shipping_threshold NUMERIC NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
+    affiliate_enabled INTEGER NOT NULL DEFAULT 0,
+    affiliate_mode TEXT,
+    affiliate_param TEXT,
+    affiliate_value TEXT,
+    affiliate_template TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE VSKR_products (
@@ -121,37 +127,49 @@ if ($route !== '' && $route !== null) {
 // --- home / results (same logic as public/index.php) ---
 $shopRepo = new \Versandkostenretter\ShopRepository($db);
 $shops = $shopRepo->activeShops();
-$csrfToken = \Versandkostenretter\Csrf::token();
 $errors = [];
 $results = null;
 $shop = null;
 $cartCents = null;
 
-if (isset($_GET['shop_id'])) {
-    $shopId = filter_var($_GET['shop_id'] ?? '', FILTER_VALIDATE_INT);
+if (isset($_GET['shop']) || isset($_GET['cart'])) {
+    $shopSlug = trim((string) ($_GET['shop'] ?? ''));
     $cartCents = \Versandkostenretter\Money::parseToCents((string) ($_GET['cart'] ?? ''));
-    if ($shopId === false || $shopId === null || $shopId < 1) {
-        $errors[] = 'Bitte wähle einen Shop aus.';
+    if ($shopSlug === '' || !preg_match('/^[a-z0-9-]+$/i', $shopSlug)) {
+        $errors[] = 'Unbekannter Shop. Bitte wähle aus der Liste.';
     } else {
-        $shop = $shopRepo->find($shopId);
-        if ($shop === null) { $errors[] = 'Unbekannter Shop.'; }
+        $shop = $shopRepo->findBySlug($shopSlug);
+        if ($shop === null) { $errors[] = 'Unbekannter Shop. Bitte wähle aus der Liste.'; }
     }
-    if ($cartCents === null) { $errors[] = 'Bitte gib deinen Warenkorbwert ein.'; }
+    if ($cartCents === null) { $errors[] = 'Bitte gib deinen aktuellen Warenkorbwert ein.'; }
     if ($shop !== null && $cartCents !== null && $errors === []) {
         $missing = \Versandkostenretter\Cart::missingCents($cartCents, $shop['free_shipping_threshold_cents']);
         if (\Versandkostenretter\Cart::thresholdReached($cartCents, $shop['free_shipping_threshold_cents'])) {
             $results = ['free_reached' => true, 'products' => [], 'missing_cents' => 0];
         } else {
             $repo = new \Versandkostenretter\ProductRepository($db);
+            $requestedCategory = isset($_GET['category']) ? trim((string) $_GET['category']) : '';
+            if ($requestedCategory !== '') { $requestedCategory = function_exists('mb_substr') ? mb_substr($requestedCategory, 0, 190) : substr($requestedCategory, 0, 190); }
+            $allProducts = $repo->eligibleProducts($shop['id'], $missing, 24);
+            $total = $repo->countEligible($shop['id'], $missing);
+            $categories = \Versandkostenretter\CategoryFilter::distinct($allProducts);
+            if (\Versandkostenretter\CategoryFilter::isUsable($categories, $requestedCategory)) {
+                $selectedCategory = $requestedCategory;
+                $products = $repo->eligibleProducts($shop['id'], $missing, 24, $selectedCategory);
+            } else {
+                $selectedCategory = null;
+                $products = $allProducts;
+            }
             $results = [
                 'free_reached' => false,
-                'products' => $repo->eligibleProducts($shop['id'], $missing, 24),
-                'total' => $repo->countEligible($shop['id'], $missing),
+                'products' => $products,
+                'total' => $total,
                 'missing_cents' => $missing,
             ];
         }
     }
 }
 
-$pageTitle = isset($_GET['shop_id']) ? 'Versandkostenretter — Ergebnisse' : 'Versandkostenretter — Rette deinen Warenkorb!';
-require __DIR__ . '/../templates/' . (isset($_GET['shop_id']) ? 'results.php' : 'home.php');
+$isSearch = isset($_GET['shop']) || isset($_GET['cart']);
+$pageTitle = $isSearch ? 'Versandkostenretter — Ergebnisse' : 'Versandkostenretter — Rette deinen Warenkorb!';
+require __DIR__ . '/../templates/' . ($isSearch ? 'results.php' : 'home.php');

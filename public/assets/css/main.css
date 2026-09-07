@@ -217,6 +217,26 @@ main {
 }
 .summary-highlight dd { color: var(--orange); font-size: 1.35rem; }
 
+/* --- category filter -------------------------------------------------------------- */
+.category-filter {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin: 0 0 1rem;
+  font-size: .95rem;
+  color: var(--ink-soft);
+}
+.category-filter select {
+  font: inherit;
+  padding: .4rem .6rem;
+  border: 2px solid #d6d3d1;
+  border-radius: .6rem;
+  background: #fff;
+  color: var(--ink);
+  max-width: 16rem;
+}
+.category-filter select:focus { border-color: var(--teal-500); outline: none; }
+
 /* --- results -------------------------------------------------------------------- */
 .results-heading { font-size: 1.2rem; color: var(--teal-900); margin: 1.5rem 0 .75rem; }
 .product-list {

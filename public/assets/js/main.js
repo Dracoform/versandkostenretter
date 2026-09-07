@@ -41,4 +41,12 @@
       cartInput.value = cartInput.value.replace(',', '.');
     });
   }
+
+  // Category filter: auto-submit on change (progressive enhancement —
+  // works without JS via the noscript button). No cookies, no storage.
+  document.querySelectorAll('select[data-autosubmit="1"]').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      if (sel.form) sel.form.submit();
+    });
+  });
 })();

@@ -25,7 +25,7 @@ final class ProductRepository
      *     price_cents:int, category:?string, image_url:?string
      * }>
      */
-    public function eligibleProducts(int $shopId, int $minPriceCents, int $limit): array
+    public function eligibleProducts(int $shopId, int $minPriceCents, int $limit, ?string $category = null): array
     {
         if ($shopId <= 0) {
             throw new RuntimeException('Invalid shop id.');
@@ -38,13 +38,19 @@ final class ProductRepository
                 FROM VSKR_products
                 WHERE shop_id = :shop_id
                   AND available = 1
-                  AND price >= :min_price
-                ORDER BY price ASC, id ASC
-                LIMIT ' . (int) $limit;
+                  AND price >= :min_price';
+        if ($category !== null) {
+            // Bound value via prepared statement; it can never influence SQL structure.
+            $sql .= ' AND category = :category';
+        }
+        $sql .= ' ORDER BY price ASC, id ASC LIMIT ' . (int) $limit;
 
         $stmt = $this->db->pdo()->prepare($sql);
         $stmt->bindValue(':shop_id', $shopId, PDO::PARAM_INT);
         $stmt->bindValue(':min_price', Money::centsToDecimal($minPriceCents));
+        if ($category !== null) {
+            $stmt->bindValue(':category', $category);
+        }
         $stmt->execute();
         $rows = $stmt->fetchAll();
 

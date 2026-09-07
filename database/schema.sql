@@ -18,6 +18,15 @@ CREATE TABLE IF NOT EXISTS VSKR_shops (
     shipping_cost            DECIMAL(10,2)    NOT NULL,
     free_shipping_threshold  DECIMAL(10,2)    NOT NULL,
     active                   TINYINT(1)       NOT NULL DEFAULT 1,
+    -- Optional affiliate configuration. DISABLED BY DEFAULT for every shop;
+    -- NULL everywhere means "no affiliate program". No real IDs are stored.
+    -- url column of VSKR_products ALWAYS holds the canonical merchant URL;
+    -- affiliate transformation happens only at link-rendering time.
+    affiliate_enabled        TINYINT(1)       NOT NULL DEFAULT 0,
+    affiliate_mode           ENUM('query','template') NULL,
+    affiliate_param          VARCHAR(64)      NULL,
+    affiliate_value          VARCHAR(190)     NULL,
+    affiliate_template       VARCHAR(500)     NULL,
     updated_at               TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_vskr_shops_slug (slug),

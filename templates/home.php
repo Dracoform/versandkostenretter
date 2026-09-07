@@ -1,6 +1,5 @@
 <?php
 /** @var array $shops */
-/** @var string $csrfToken */
 /** @var string $pageTitle */
 
 require __DIR__ . '/layout_header.php';
@@ -24,7 +23,7 @@ require __DIR__ . '/layout_header.php';
         <circle cx="41" cy="23" r="8" fill="#57534e"/>
         <circle cx="75" cy="23" r="8" fill="#57534e"/>
         <!-- mask -->
-        <path d="M40 34 q8 -6 17 -2 q9 -4 17 2 q-4 10 -17 8 q-13 2 -17 -8 z" fill="#292524"/>
+        <path d="M40 34 q8 -6 17 -2 q9 -4 17 2 q-13 2 -17 -8 z" fill="#292524"/>
         <!-- eyes -->
         <circle cx="50" cy="36" r="3.4" fill="#fff"/>
         <circle cx="67" cy="36" r="3.4" fill="#fff"/>
@@ -52,15 +51,15 @@ require __DIR__ . '/layout_header.php';
 
 <section class="card form-card" aria-labelledby="form-heading">
   <h2 id="form-heading" class="visually-hidden">Warenkorbwert prüfen</h2>
-  <form method="post" action="/" class="search-form" novalidate>
-    <input type="hidden" name="csrf_token" value="<?= \Versandkostenretter\View::e($csrfToken) ?>">
-
+  <!-- GET-only lookup: read-only operation, works without JavaScript,
+       sets no cookies, results are shareable/bookmarkable URLs. -->
+  <form method="get" action="/" class="search-form" novalidate>
     <div class="field">
-      <label for="shop_id">Shop auswählen</label>
-      <select id="shop_id" name="shop_id" required>
+      <label for="shop">Shop auswählen</label>
+      <select id="shop" name="shop" required>
         <option value="" selected disabled>Bitte wählen …</option>
         <?php foreach ($shops as $shop): ?>
-          <option value="<?= (int) $shop['id'] ?>">
+          <option value="<?= \Versandkostenretter\View::e($shop['slug']) ?>">
             <?= \Versandkostenretter\View::e($shop['name']) ?>
             (Gratis ab <?= \Versandkostenretter\Money::formatEuro($shop['free_shipping_threshold_cents']) ?>)
           </option>
@@ -69,9 +68,9 @@ require __DIR__ . '/layout_header.php';
     </div>
 
     <div class="field">
-      <label for="cart_value">Aktueller Warenkorbwert</label>
+      <label for="cart">Aktueller Warenkorbwert</label>
       <div class="money-input">
-        <input type="text" id="cart_value" name="cart_value"
+        <input type="text" id="cart" name="cart"
                inputmode="decimal" autocomplete="off"
                placeholder="z. B. 125,34" required>
       </div>

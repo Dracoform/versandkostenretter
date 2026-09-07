@@ -7,12 +7,12 @@
  * @var array      $errors          validation errors
  * @var array|null $results         ['free_reached'=>bool, 'products'=>[], 'total'=>int, 'missing_cents'=>int]
  * @var array      $shops           all active shops (for the form)
- * @var string     $csrfToken
  * @var string     $pageTitle
  * @var int        $maxResults
  */
 
 use Versandkostenretter\Money;
+use Versandkostenretter\OutboundLink;
 use Versandkostenretter\View;
 
 require __DIR__ . '/layout_header.php';
@@ -68,6 +68,23 @@ require __DIR__ . '/layout_header.php';
   <?php $missing = $results['missing_cents']; ?>
   <h2 class="results-heading">Passende Produkte ab <?= Money::formatEuro($missing) ?></h2>
 
+  <?php if (!empty($categories)): ?>
+    <form method="get" action="/" class="category-filter">
+      <input type="hidden" name="shop" value="<?= View::e($shop['slug']) ?>">
+      <input type="hidden" name="cart" value="<?= View::e($cartRaw) ?>">
+      <label for="category">Kategorie:</label>
+      <select id="category" name="category" data-autosubmit="1">
+        <option value="">Alle</option>
+        <?php foreach ($categories as $cat): ?>
+          <option value="<?= View::e($cat) ?>" <?= $selectedCategory === $cat ? 'selected' : '' ?>>
+            <?= View::e($cat) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <noscript><button type="submit" class="btn-secondary">Anzeigen</button></noscript>
+    </form>
+  <?php endif; ?>
+
   <?php if ($results['products'] === []): ?>
     <section class="notice">
       <p>Aktuell keine passenden Produkte gefunden.
@@ -77,7 +94,9 @@ require __DIR__ . '/layout_header.php';
     <ul class="product-list">
       <?php foreach ($results['products'] as $p):
           $effective = \Versandkostenretter\Cart::effectiveExtraCostCents($p['price_cents'], $shop['shipping_cost_cents']);
-          $safeUrl = View::safeUrl($p['url']);
+          // Single outbound-link component: canonical URL in, safe URL out.
+          $link = OutboundLink::build($p['url'], $shop['affiliate']);
+          $outboundUrl = $link['url'];
           $safeImg = View::safeUrl($p['image_url']);
       ?>
         <li class="product-card">
@@ -88,8 +107,8 @@ require __DIR__ . '/layout_header.php';
           <?php endif; ?>
           <div class="product-body">
             <h3 class="product-name">
-              <?php if ($safeUrl !== null): ?>
-                <a href="<?= View::e($safeUrl) ?>" rel="nofollow noopener" target="_blank"><?= View::e($p['name']) ?></a>
+              <?php if ($outboundUrl !== null): ?>
+                <a href="<?= View::e($outboundUrl) ?>" rel="nofollow noopener" target="_blank"><?= View::e($p['name']) ?></a>
               <?php else: ?>
                 <?= View::e($p['name']) ?>
               <?php endif; ?>
@@ -104,8 +123,8 @@ require __DIR__ . '/layout_header.php';
           </div>
           <div class="product-price">
             <?= Money::formatEuro($p['price_cents']) ?>
-            <?php if ($safeUrl !== null): ?>
-              <a class="btn-secondary" href="<?= View::e($safeUrl) ?>" rel="nofollow noopener" target="_blank">Zum Shop</a>
+            <?php if ($outboundUrl !== null): ?>
+              <a class="btn-secondary" href="<?= View::e($outboundUrl) ?>" rel="nofollow noopener" target="_blank">Zum Shop</a>
             <?php endif; ?>
           </div>
         </li>

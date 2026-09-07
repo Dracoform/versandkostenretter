@@ -18,6 +18,8 @@ final class View
     /**
      * Safe href for product links / image URLs coming from the database.
      * Only http(s) is allowed; anything else (javascript:, data:, ...) is dropped.
+     * Interior whitespace is percent-encoded (never silently dropped), and
+     * control characters make the URL invalid.
      */
     public static function safeUrl(?string $url): ?string
     {
@@ -25,9 +27,14 @@ final class View
             return null;
         }
         $url = trim($url);
-        // Reject control chars, newlines and whitespace tricks.
-        if (preg_match('/[\x00-\x20]/', $url)) {
-            $url = preg_replace('/[\x00-\x20]+/', '', $url) ?? '';
+        // Control characters (except regular spaces) make the URL invalid —
+        // they are a classic filter-evasion vector, never encode them.
+        if (preg_match('/[\x00-\x1F\x7F]/', $url)) {
+            return null;
+        }
+        // Encode interior spaces so they cannot break attribute parsing.
+        if (str_contains($url, ' ')) {
+            $url = str_replace(' ', '%20', $url);
         }
         if (!preg_match('#^https?://#i', $url)) {
             return null;

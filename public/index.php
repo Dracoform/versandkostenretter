@@ -3,10 +3,16 @@
 declare(strict_types=1);
 
 /**
- * Versandkostenretter — MVP front controller.
+ * Versandkostenretter — front controller.
  *
  * Single entry point. Reads config from ../config/config.php (outside the
  * public web root). All DB access is read-only and VSKR_-table-scoped.
+ *
+ * The cart lookup is a strictly READ-ONLY operation (select shop, enter
+ * cart value, get products — nothing is modified, no accounts exist).
+ * It therefore uses GET semantics (?shop=slug&cart=125.34) and requires
+ * NO session, NO CSRF token and NO cookies. Normal use of this
+ * application emits no Set-Cookie header at all.
  */
 
 error_reporting(E_ALL);
@@ -33,28 +39,6 @@ if ($maxResults < 1 || $maxResults > 100) {
     $maxResults = 24;
 }
 
-// ---------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------
-function vskr_view(): string
-{
-    return \Versandkostenretter\View::class;
-}
-
-function vskr_redirect(string $target): never
-{
-    header('Location: ' . $target, true, 303);
-    exit;
-}
-
-function vskr_json_error(int $status, string $message): never
-{
-    http_response_code($status);
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
 set_exception_handler(function (\Throwable $e) use ($debug): void {
     error_log('[vskr] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
     if ($debug) {
@@ -78,11 +62,11 @@ set_exception_handler(function (\Throwable $e) use ($debug): void {
 $route = isset($_GET['page']) ? (string) $_GET['page'] : '';
 
 match ($route) {
-    ''         => vskr_handle_home($config, $maxResults),
+    ''             => vskr_handle_home($config, $maxResults),
     'impressum'    => vskr_render_static('impressum'),
     'datenschutz'  => vskr_render_static('datenschutz'),
-    'health'   => vskr_health($config),
-    default    => vskr_render_404(),
+    'health'       => vskr_health($config),
+    default        => vskr_render_404(),
 };
 
 // ---------------------------------------------------------------
@@ -92,34 +76,26 @@ function vskr_handle_home(array $config, int $maxResults): void
 {
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-    // Everything except the actual search goes through GET.
-    if ($method === 'POST' && isset($_POST['shop_id'])) {
-        vskr_validate_csrf();
-        $shopId = filter_var($_POST['shop_id'] ?? '', FILTER_VALIDATE_INT);
-        $cartRaw = (string) ($_POST['cart_value'] ?? '');
-        vskr_redirect(vskr_search_url($shopId, $cartRaw));
+    // Form submissions are turned into clean GET URLs (POST -> 303 redirect).
+    // The form itself works with plain GET; the redirect just normalizes
+    // the URL for shareable/bookmarkable results. No state, no CSRF.
+    if ($method === 'POST') {
+        $shopSlug = trim((string) ($_POST['shop'] ?? ''));
+        $cartRaw = (string) ($_POST['cart'] ?? '');
+        $target = '/';
+        if ($shopSlug !== '' && $cartRaw !== '') {
+            $target = '/?' . http_build_query(['shop' => $shopSlug, 'cart' => $cartRaw]);
+        }
+        header('Location: ' . $target, true, 303);
+        exit;
     }
 
-    if ($method === 'GET' && isset($_GET['shop_id'])) {
+    if (isset($_GET['shop']) || isset($_GET['cart'])) {
         vskr_render_results($config, $maxResults);
         return;
     }
 
     vskr_render_home();
-}
-
-function vskr_validate_csrf(): void
-{
-    $token = $_POST['csrf_token'] ?? null;
-    if (!\Versandkostenretter\Csrf::validate(is_string($token) ? $token : null)) {
-        vskr_json_error(400, 'Ungültiges Formular-Token. Bitte Seite neu laden.');
-    }
-}
-
-function vskr_search_url(?int $shopId, string $cartRaw): string
-{
-    $params = ['shop_id' => (string) ($shopId ?? ''), 'cart' => $cartRaw];
-    return '/?' . http_build_query($params);
 }
 
 function vskr_render_home(): void
@@ -128,9 +104,7 @@ function vskr_render_home(): void
     $shopRepo = new \Versandkostenretter\ShopRepository($db);
     $shops = $shopRepo->activeShops();
 
-    $csrfToken = \Versandkostenretter\Csrf::token();
     $pageTitle = 'Versandkostenretter — Rette deinen Warenkorb!';
-
     require dirname(__DIR__) . '/templates/home.php';
 }
 
@@ -138,39 +112,61 @@ function vskr_render_results(array $config, int $maxResults): void
 {
     $db = \Versandkostenretter\Database::fromConfigFile(dirname(__DIR__) . '/config/config.php');
     $shopRepo = new \Versandkostenretter\ShopRepository($db);
+
     $cartRaw = (string) ($_GET['cart'] ?? '');
     $cartCents = \Versandkostenretter\Money::parseToCents($cartRaw);
-    $shopId = filter_var($_GET['shop_id'] ?? '', FILTER_VALIDATE_INT);
+    $shopSlug = trim((string) ($_GET['shop'] ?? ''));
 
     $errors = [];
-    if ($shopId === false || $shopId === null || $shopId < 1) {
+    if ($shopSlug === '') {
         $errors[] = 'Bitte wähle einen Shop aus.';
-        $shopId = null;
-    }
-    if ($cartCents === null) {
-        $errors[] = 'Bitte gib deinen aktuellen Warenkorbwert ein (z. B. 125.34 oder 125,34).';
+        $shop = null;
+    } elseif (strlen($shopSlug) > 190 || !preg_match('/^[a-z0-9-]+$/i', $shopSlug)) {
+        $errors[] = 'Unbekannter Shop. Bitte wähle aus der Liste.';
+        $shop = null;
+    } else {
+        $shop = $shopRepo->findBySlug($shopSlug);
+        if ($shop === null) {
+            $errors[] = 'Unbekannter Shop. Bitte wähle aus der Liste.';
+        }
     }
 
-    $shop = $shopId !== null ? $shopRepo->find($shopId) : null;
-    if ($shopId !== null && $shop === null) {
-        $errors[] = 'Unbekannter Shop. Bitte wähle aus der Liste.';
-        $shopId = null;
-    }
-    if ($shop !== null && $cartCents !== null && $cartCents < 0) {
-        $errors[] = 'Warenkorbwert darf nicht negativ sein.';
-        $cartCents = null;
+    if ($cartRaw !== '' && $cartCents === null) {
+        $errors[] = 'Bitte gib deinen aktuellen Warenkorbwert ein (z. B. 125.34 oder 125,34).';
+    } elseif ($cartRaw === '' && $cartCents === null) {
+        $errors[] = 'Bitte gib deinen aktuellen Warenkorbwert ein.';
     }
 
     $results = null;
+    $categories = [];
+    $selectedCategory = null;
+
     if ($shop !== null && $cartCents !== null && $errors === []) {
         $missing = \Versandkostenretter\Cart::missingCents($cartCents, $shop['free_shipping_threshold_cents']);
         if (\Versandkostenretter\Cart::thresholdReached($cartCents, $shop['free_shipping_threshold_cents'])) {
             $results = ['free_reached' => true, 'products' => []];
         } else {
-            $products = (new \Versandkostenretter\ProductRepository($db))
-                ->eligibleProducts($shop['id'], $missing, $maxResults);
-            $total = (new \Versandkostenretter\ProductRepository($db))
-                ->countEligible($shop['id'], $missing);
+            $productRepo = new \Versandkostenretter\ProductRepository($db);
+
+            // Opportunistic, shop-local category filter (stateless GET param).
+            $requestedCategory = isset($_GET['category']) ? trim((string) $_GET['category']) : '';
+            if ($requestedCategory !== '') {
+                $requestedCategory = mb_substr($requestedCategory, 0, 190);
+            }
+
+            // Unfiltered eligible set defines the available choices.
+            $allProducts = $productRepo->eligibleProducts($shop['id'], $missing, $maxResults);
+            $total = $productRepo->countEligible($shop['id'], $missing);
+            $categories = \Versandkostenretter\CategoryFilter::distinct($allProducts);
+
+            if (\Versandkostenretter\CategoryFilter::isUsable($categories, $requestedCategory)) {
+                $selectedCategory = $requestedCategory;
+                $products = $productRepo->eligibleProducts($shop['id'], $missing, $maxResults, $selectedCategory);
+            } else {
+                // Invalid/unknown category: graceful fallback to "Alle".
+                $products = $allProducts;
+            }
+
             $results = [
                 'free_reached' => false,
                 'products' => $products,
@@ -180,7 +176,6 @@ function vskr_render_results(array $config, int $maxResults): void
         }
     }
 
-    $csrfToken = \Versandkostenretter\Csrf::token();
     $shops = $shopRepo->activeShops();
     $pageTitle = 'Versandkostenretter — Ergebnisse';
     require dirname(__DIR__) . '/templates/results.php';

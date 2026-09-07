@@ -20,15 +20,15 @@ require __DIR__ . '/layout_header.php';
   <h2>Umfang der Datenverarbeitung</h2>
   <p>
     Dieser Dienst verarbeitet personenbezogene Daten nur, soweit technisch
-    notwendig. Es werden <strong>keine Cookies für Tracking oder Werbung</strong>
-    gesetzt, <strong>keine Analyse-Tools</strong> eingesetzt und
-    <strong>keine Daten an Dritte</strong> weitergegeben.
+    notwendig. Es werden <strong>keine Cookies gesetzt</strong> (auch keine
+    für Tracking oder Werbung), <strong>keine Analyse-Tools</strong> eingesetzt
+    und <strong>keine Daten an Dritte</strong> weitergegeben.
   </p>
   <p>
-    Aus rein technischen Gründen wird eine einzige Session-Variable genutzt, die
-    ein zufälliges Sicherheits-Token (CSRF-Schutz) enthält. Diese Session wird
-    nicht dazu verwendet, Nutzer zu verfolgen oder zu profilieren und automatisch
-    gelöscht.
+    Die Warenkorb-Suche ist eine rein technische Abfrage ohne
+    Benutzerverwaltung: Ein Session-Cookie ist nicht erforderlich und wird
+    nicht gesetzt. Die Suchparameter (Shop, Warenkorbwert) stehen ausschließlich
+    in der URL der Ergebnisseite.
   </p>
 
   <h2>Server-Logfiles</h2>
