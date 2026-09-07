@@ -196,7 +196,9 @@ function vskr_render_results(array $config, int $maxResults): void
             // Opportunistic, shop-local category filter (stateless GET param).
             $requestedCategory = isset($_GET['category']) ? trim((string) $_GET['category']) : '';
             if ($requestedCategory !== '') {
-                $requestedCategory = mb_substr($requestedCategory, 0, 190);
+                $requestedCategory = function_exists('mb_substr')
+                    ? mb_substr($requestedCategory, 0, 190)
+                    : substr($requestedCategory, 0, 190);
             }
 
             // Unfiltered eligible set defines the available choices.
