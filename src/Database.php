@@ -58,13 +58,17 @@ final class Database
             }
         }
 
-        $dsn = sprintf(
-            'mysql:host=%s;port=%d;dbname=%s;charset=%s',
-            $db['host'],
-            (int) ($db['port'] ?? 3306),
-            $db['name'],
-            $db['charset'] ?? 'utf8mb4'
-        );
+        // Full-DSN override (used by tests/local SQLite runs). Production
+        // config never sets db.dsn and keeps the MySQL construction below.
+        $dsn = isset($db['dsn']) && is_string($db['dsn']) && $db['dsn'] !== ''
+            ? $db['dsn']
+            : sprintf(
+                'mysql:host=%s;port=%d;dbname=%s;charset=%s',
+                $db['host'],
+                (int) ($db['port'] ?? 3306),
+                $db['name'],
+                $db['charset'] ?? 'utf8mb4'
+            );
 
         try {
             $this->pdo = new PDO($dsn, $db['user'], $db['pass'], [
@@ -88,7 +92,10 @@ final class Database
     public static function assertOnlyVskrTables(string $sql): array
     {
         $violations = [];
-        if (preg_match_all('/\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+`?([A-Za-z0-9_]+)`?/i', $sql, $m, PREG_SET_ORDER)) {
+        // 'CREATE TABLE IF NOT EXISTS' / 'DROP TABLE IF EXISTS': skip the IF NOT
+        // keywords so the actual table name is captured.
+        $normalized = preg_replace('/\b(TABLE)\s+IF\s+NOT\s+EXISTS\b/i', '$1', $sql);
+        if (preg_match_all('/\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+`?([A-Za-z0-9_]+)`?/i', $normalized, $m, PREG_SET_ORDER)) {
             foreach ($m as $hit) {
                 $table = $hit[2];
                 if (!str_starts_with($table, 'VSKR_')) {
