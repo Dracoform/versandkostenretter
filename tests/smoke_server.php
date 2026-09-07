@@ -16,7 +16,7 @@ namespace VskrSmoke;
 // Static file passthrough for the PHP dev server, mirroring router.php:
 // protected directories and sensitive files are NEVER served.
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-$protectedDirs = ['src', 'templates', 'tests', 'database', 'config', 'assets-design'];
+$protectedDirs = ['src', 'templates', 'tests', 'database', 'config', 'assets-design', 'bin'];
 $isProtected = false;
 foreach ($protectedDirs as $dir) {
     if ($uri === '/' . $dir || str_starts_with($uri, '/' . $dir . '/')) {

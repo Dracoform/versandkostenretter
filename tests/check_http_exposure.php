@@ -66,6 +66,7 @@ $check = function (string $name, bool $ok, string $detail = '') use (&$pass, &$f
 
 // 1. Non-public directories must NOT be retrievable.
 foreach (['src/Money.php', 'templates/home.php', 'tests/run.php', 'tests/smoke_server.php',
+          'bin/import-shop.php', 'bin/.htaccess', 'src/Import/ShopifyImporter.php',
           'database/schema.sql', 'database/seed-development.sql',
           'database/migrations/0001_shops_affiliate_columns.sql',
           'config/config.example.php', 'assets-design/01-design-reference.png'] as $sensitive) {
@@ -74,7 +75,7 @@ foreach (['src/Money.php', 'templates/home.php', 'tests/run.php', 'tests/smoke_s
 }
 
 // Directory listings must not work either.
-foreach (['src', 'templates', 'tests', 'database', 'config', 'assets-design'] as $dir) {
+foreach (['src', 'templates', 'tests', 'database', 'config', 'assets-design', 'bin'] as $dir) {
     [$status, , ] = vskr_http($base . '/' . $dir);
     $check("deny dir /{$dir}", $status === 404 || $status === 403, "got {$status}");
 }

@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS VSKR_shops (
     shipping_cost            DECIMAL(10,2)    NOT NULL,
     free_shipping_threshold  DECIMAL(10,2)    NOT NULL,
     active                   TINYINT(1)       NOT NULL DEFAULT 1,
+    -- Import source configuration (NULL = no automated import configured).
+    source_type              VARCHAR(50)      NULL,
+    source_url               VARCHAR(1000)    NULL,
+    source_scope             VARCHAR(190)     NOT NULL DEFAULT 'default',
     -- Optional affiliate configuration. DISABLED BY DEFAULT for every shop;
     -- NULL everywhere means "no affiliate program". No real IDs are stored.
     -- url column of VSKR_products ALWAYS holds the canonical merchant URL;
@@ -44,12 +48,21 @@ CREATE TABLE IF NOT EXISTS VSKR_products (
     available      TINYINT(1)    NOT NULL DEFAULT 1,
     category       VARCHAR(190)  NULL,
     image_url      VARCHAR(1000) NULL,
+    -- Import provenance: which source feed this row came from and from which
+    -- scope (e.g. one Shopify collection). Stale-marking is scoped to
+    -- (shop_id, source_type, source_scope) so other sources of the same shop
+    -- are never affected. NULL = manually created / legacy row (never stale-marked).
+    source_type    VARCHAR(50)   NULL,
+    source_scope   VARCHAR(190)  NOT NULL DEFAULT 'default',
     last_seen_at   TIMESTAMP     NULL DEFAULT NULL,
     updated_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    -- Idempotency: an import must never create duplicates for the same
+    -- product within one shop/source/scope. Manual (NULL-source) rows are
+    -- exempt: in MySQL a UNIQUE key containing NULL allows multiple NULLs.
+    UNIQUE KEY uq_vskr_products_source (shop_id, source_type, source_scope, external_id),
     -- Existing useful index (kept verbatim):
     KEY ix_vskr_products_shop_avail_price (shop_id, available, price),
-    KEY ix_vskr_products_external (shop_id, external_id),
     CONSTRAINT fk_vskr_products_shop
         FOREIGN KEY (shop_id) REFERENCES VSKR_shops (id)
         ON DELETE CASCADE ON UPDATE CASCADE
