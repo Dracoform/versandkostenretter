@@ -62,22 +62,21 @@ No shipping-rule engine. The shop's stored `shipping_cost` and
   services.
 
 ```
-public/            document root (only web-accessible directory)
-  index.php        front controller (/, ?page=impressum|datenschutz, /?...health)
-  .htaccess        blocks config/src/database/tests, security headers
-  router.php       dev-server router only
-  assets/          css/, js/, images/ (all local, no CDN)
-src/
-  Money.php        money parse/format in integer cents
-  Cart.php         pure business logic (missing, qualifies, effective cost)
-  ShopRepository.php / ProductRepository.php   PDO reads (VSKR_ tables only)
-  Database.php     PDO factory + VSKR_-only guardrail helper
-  Csrf.php / View.php
+(Plesk: repository root IS the document root /versandkostenretter.de/httpdocs)
+index.php          front controller (/, ?page=impressum|datenschutz, /?...health)
+.htaccess          blocks src/templates/tests/database/config/assets-design,
+                   sensitive file types, security headers
+router.php         dev-server router only (denied over HTTP)
+assets/            css/, js/, images/ (all local, no CDN)
+src/               Money, Cart, Shop/ProductRepository, Database, OutboundLink,
+                   CategoryFilter, View
 templates/         home, results, impressum, datenschutz, 404, layout
-config/            config.example.php (committed) / config.php (gitignored, outside docroot)
-database/          schema.sql (reproducible), seed-development.sql (fictional)
-tests/run.php      framework-free tests
-assets/            original design references (not deployed, not embedded)
+config/            config.example.php (committed); real config.php lives
+                   OUTSIDE the document root: /versandkostenretter.de/config/config.php
+database/          schema.sql, seed-development.sql, migrations/
+tests/             run.php, check_no_cookies.php, check_http_exposure.php,
+                   smoke_server.php (local dev only)
+assets-design/     original design references (never web-accessible)
 ```
 
 ## 6. Database contract

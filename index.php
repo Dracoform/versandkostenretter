@@ -20,9 +20,26 @@ ini_set('display_errors', '0');       // never expose internals to users
 ini_set('log_errors', '1');
 ini_set('error_log', ini_get('error_log') ?? 'syslog'); // hosting default
 
-$configPath = dirname(__DIR__) . '/config/config.php';
+// DB credentials live OUTSIDE the document root:
+//   /versandkostenretter.de/config/config.php  (sibling of httpdocs)
+// Fallback for local development: ./config/config.php inside the repo
+// (gitignored). The example file config/config.example.php is committed.
+$home = dirname(__DIR__);                      // .../versandkostenretter.de (Plesk: parent of httpdocs)
+$configCandidates = [
+    $home . '/config/config.php',              // Plesk: OUTSIDE the document root
+    __DIR__ . '/config/config.php',            // local dev only (gitignored)
+];
+$configPath = null;
+foreach ($configCandidates as $candidate) {
+    if (is_file($candidate)) {
+        $configPath = $candidate;
+        break;
+    }
+}
+$GLOBALS['vskr_config_path'] = $configPath;
+
 $config = [];
-if (is_file($configPath)) {
+if ($configPath !== null && is_file($configPath)) {
     try {
         $loaded = require $configPath;
         if (is_array($loaded)) {
@@ -37,6 +54,32 @@ $debug = (bool) ($config['app']['debug'] ?? false);
 $maxResults = (int) ($config['app']['max_results'] ?? 24);
 if ($maxResults < 1 || $maxResults > 100) {
     $maxResults = 24;
+}
+
+// Minimal autoloader: Versandkostenretter\<Name> => src/<Name>.php
+spl_autoload_register(function (string $class): void {
+    if (str_starts_with($class, 'Versandkostenretter\\')) {
+        $file = __DIR__ . '/src/' . str_replace('\\', '', substr($class, strlen('Versandkostenretter\\'))) . '.php';
+        if (is_file($file)) {
+            require $file;
+        }
+    }
+});
+
+/**
+ * Resolved path of the DB config file (outside the document root on Plesk:
+ * /versandkostenretter.de/config/config.php).
+ */
+function vskr_config_path(): string
+{
+    $path = $GLOBALS['vskr_config_path'] ?? null;
+    if (!is_string($path) || $path === '') {
+        throw new RuntimeException(
+            'Database configuration missing. Expected at '
+            . dirname(__DIR__, 2) . '/config/config.php (outside the document root).'
+        );
+    }
+    return $path;
 }
 
 set_exception_handler(function (\Throwable $e) use ($debug): void {
@@ -100,7 +143,7 @@ function vskr_handle_home(array $config, int $maxResults): void
 
 function vskr_render_home(): void
 {
-    $db = \Versandkostenretter\Database::fromConfigFile(dirname(__DIR__) . '/config/config.php');
+    $db = \Versandkostenretter\Database::fromConfigFile(vskr_config_path());
     $shopRepo = new \Versandkostenretter\ShopRepository($db);
     $shops = $shopRepo->activeShops();
 
@@ -110,7 +153,7 @@ function vskr_render_home(): void
 
 function vskr_render_results(array $config, int $maxResults): void
 {
-    $db = \Versandkostenretter\Database::fromConfigFile(dirname(__DIR__) . '/config/config.php');
+    $db = \Versandkostenretter\Database::fromConfigFile(vskr_config_path());
     $shopRepo = new \Versandkostenretter\ShopRepository($db);
 
     $cartRaw = (string) ($_GET['cart'] ?? '');
@@ -204,7 +247,7 @@ function vskr_health(array $config): never
     header('Content-Type: application/json; charset=utf-8');
     $payload = ['status' => 'ok', 'app' => 'versandkostenretter-mvp'];
     try {
-        $db = \Versandkostenretter\Database::fromConfigFile(dirname(__DIR__) . '/config/config.php');
+        $db = \Versandkostenretter\Database::fromConfigFile(vskr_config_path());
         $count = $db->pdo()->query('SELECT COUNT(*) FROM VSKR_shops')->fetchColumn();
         $payload['shops'] = (int) $count;
     } catch (\Throwable $e) {

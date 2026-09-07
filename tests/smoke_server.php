@@ -13,10 +13,26 @@ declare(strict_types=1);
 
 namespace VskrSmoke;
 
-// Static file passthrough for the PHP dev server (like public/router.php):
-// returning false makes the built-in server serve the requested file itself.
+// Static file passthrough for the PHP dev server, mirroring router.php:
+// protected directories and sensitive files are NEVER served.
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-if ($uri !== '/' && is_file(__DIR__ . '/../public' . $uri)) {
+$protectedDirs = ['src', 'templates', 'tests', 'database', 'config', 'assets-design'];
+$isProtected = false;
+foreach ($protectedDirs as $dir) {
+    if ($uri === '/' . $dir || str_starts_with($uri, '/' . $dir . '/')) {
+        $isProtected = true;
+        break;
+    }
+}
+if ($isProtected || str_contains($uri, '..')
+    || preg_match('#\.(sql|md|sh|ini|log|env|php)$#', $uri) && $uri !== '/index.php'
+) {
+    http_response_code(404);
+    exit;
+}
+if ($uri !== '/' && is_file(__DIR__ . '/..' . $uri)
+    && basename($uri) !== 'router.php' && !preg_match('#\.(php|sql|md)$#', $uri)
+) {
     return false;
 }
 

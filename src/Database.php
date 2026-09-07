@@ -72,8 +72,6 @@ final class Database
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
                 PDO::ATTR_STRINGIFY_FETCHES  => false,
-                // Read-only connection: even a bug in our SQL cannot write.
-                PDO::MYSQL_ATTR_READ_DEFAULT_FILE => null, // keep driver defaults
             ]);
         } catch (PDOException $e) {
             // Never leak credentials or stack traces to the user.
