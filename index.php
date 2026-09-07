@@ -56,13 +56,15 @@ if ($maxResults < 1 || $maxResults > 100) {
     $maxResults = 24;
 }
 
-// Minimal autoloader: Versandkostenretter\<Name> => src/<Name>.php
+// PSR-4-style autoloader: Versandkostenretter\... => src/...
+// (subnamespaces map to subdirectories, e.g. Import\ => src/Import/)
 spl_autoload_register(function (string $class): void {
-    if (str_starts_with($class, 'Versandkostenretter\\')) {
-        $file = __DIR__ . '/src/' . str_replace('\\', '', substr($class, strlen('Versandkostenretter\\'))) . '.php';
-        if (is_file($file)) {
-            require $file;
-        }
+    if (!str_starts_with($class, 'Versandkostenretter\\')) {
+        return;
+    }
+    $file = __DIR__ . '/src/' . str_replace('\\', '/', substr($class, strlen('Versandkostenretter\\'))) . '.php';
+    if (is_file($file)) {
+        require $file;
     }
 });
 

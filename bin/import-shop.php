@@ -22,16 +22,22 @@ if (PHP_SAPI !== 'cli') {
     exit;
 }
 
-require dirname(__DIR__) . '/src/Money.php';
-require dirname(__DIR__) . '/src/Cart.php';
-require dirname(__DIR__) . '/src/View.php';
-require dirname(__DIR__) . '/src/Database.php';
-require dirname(__DIR__) . '/src/ShopRepository.php';
-require dirname(__DIR__) . '/src/ProductRepository.php';
-require dirname(__DIR__) . '/src/Import/HttpClient.php';
-require dirname(__DIR__) . '/src/Import/ShopifyMapper.php';
-require dirname(__DIR__) . '/src/Import/ImportRepository.php';
-require dirname(__DIR__) . '/src/Import/ShopifyImporter.php';
+// One robust autoloader for the whole Versandkostenretter namespace
+// (PSR-4-style, mapping Versandkostenretter\ => src/ and
+//  Versandkostenretter\Import\ => src/Import/). Class/interface dependency
+// order is resolved by PHP at first use — no manual require ordering that
+// can break (this previously fatalled: HttpClient implements SourceFetcher
+// before the interface file had been required).
+spl_autoload_register(function (string $class): void {
+    if (!str_starts_with($class, 'Versandkostenretter\\')) {
+        return;
+    }
+    $relative = substr($class, strlen('Versandkostenretter\\'));
+    $file = dirname(__DIR__) . '/src/' . str_replace('\\', '/', $relative) . '.php';
+    if (is_file($file)) {
+        require $file;
+    }
+});
 
 use Versandkostenretter\Database;
 
