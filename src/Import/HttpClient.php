@@ -7,6 +7,14 @@ namespace Versandkostenretter\Import;
 use RuntimeException;
 use Versandkostenretter\Import\SourceException;
 
+// Compile-time dependency: when this file is loaded before the autoloader is
+// registered (e.g. via auto_prepend_file or manual require), the interface
+// must already exist or PHP fatals at parse time. Guarded require makes the
+// load order irrelevant.
+if (!interface_exists(SourceFetcher::class)) {
+    require_once __DIR__ . '/SourceFetcher.php';
+}
+
 /**
  * Minimal HTTP fetcher for the importer: HTTPS-only, fixed timeouts,
  * bounded retries with backoff, strict content-type and redirect policy.
