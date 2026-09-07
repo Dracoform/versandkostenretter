@@ -13,7 +13,7 @@ Options -Indexes
 # --- Deny all application-only directories (defense in depth) ---------------
 # Each directory additionally carries its own deny-all .htaccess; these rules
 # make the block explicit even if a subdirectory override is lost.
-RedirectMatch 404 ^/(src|templates|tests|database|config|assets-design)(/|$)
+RedirectMatch 404 ^/(src|templates|tests|database|config|assets-design|bin)(/|$)
 
 # --- Deny sensitive file types anywhere --------------------------------------
 <FilesMatch "\.(sql|md|sh|ini|log|env|example\.php)$|^\.(git|htaccess|gitignore)">

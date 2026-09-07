@@ -46,10 +46,36 @@ The dev seed contains clearly marked fictional shops/products
 (`(TEST DATA)`) — none of the prices or shipping values are verified merchant
 information.
 
+## Product importer (CLI, cron-ready)
+
+One-time production setup (run manually, in order):
+```bash
+mysql -u USER -p DBNAME < database/migrations/0001_shops_affiliate_columns.sql
+mysql -u USER -p DBNAME < database/migrations/0002_products_source_columns.sql
+mysql -u USER -p DBNAME < database/migrations/0003_lootforge_shop.sql
+```
+(the third one also creates/updates the Lootforge shop record — idempotent)
+
+Import manually:
+```bash
+php bin/import-shop.php lootforge --dry-run   # fetch + map + report, NO writes
+php bin/import-shop.php lootforge             # real import
+```
+
+Exit codes: 0 ok, 1 usage, 2 shop/config missing, 3 source failure,
+4 database failure, 5 already running. Concurrent runs for the same shop
+are prevented via a MySQL name-lock. A failed fetch NEVER changes product
+availability. Stale products (absent from a COMPLETE feed) are marked
+`available = 0`, scoped to (shop, source, scope) — never deleted.
+
 ## Tests
 
 ```bash
-php tests/run.php
+php tests/run.php                            # app logic
+php tests/import/run_import_tests.php        # importer (needs pdo_sqlite locally)
+php tests/check_layout_paths.php             # Plesk layout simulation
+php tests/check_http_exposure.php            # needs local smoke server running
+php tests/check_no_cookies.php               # needs local smoke server running
 ```
 
 No external dependencies, no Composer, no Node. Pure PHP + assertions.
