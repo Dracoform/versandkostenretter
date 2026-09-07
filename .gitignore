@@ -1,0 +1,11 @@
+# Credentials / local configuration — never commit
+config/config.php
+.env
+*.env.local
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

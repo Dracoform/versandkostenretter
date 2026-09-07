@@ -1,0 +1,35 @@
+# Versandkostenretter — Apache config for shared hosting (Plesk)
+# Document root points at public/. Everything else is NOT web-accessible.
+
+Options -Indexes
+
+# Never serve config, source, database or docs directories.
+RedirectMatch 404 ^/(config|src|templates|database|tests|docs)/
+
+# Never serve dotfiles or the example config contents.
+<FilesMatch "^\.|\.example\.php$|\.md$|\.sql$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/svg+xml "access plus 7 days"
+  ExpiresByType image/png "access plus 7 days"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Local PHP built-in server needs this router passthrough:
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
