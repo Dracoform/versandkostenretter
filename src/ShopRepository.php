@@ -14,7 +14,8 @@ final class ShopRepository
 {
     /** Columns selected for shop records. */
     private const COLS = 'id, name, slug, shipping_cost, free_shipping_threshold,
-        affiliate_enabled, affiliate_mode, affiliate_param, affiliate_value, affiliate_template';
+        affiliate_enabled, affiliate_mode, affiliate_param, affiliate_value, affiliate_template,
+        product_images_enabled';
 
     public function __construct(private Database $db)
     {
@@ -82,6 +83,9 @@ final class ShopRepository
             'slug' => (string) $row['slug'],
             'shipping_cost_cents' => $shipping,
             'free_shipping_threshold_cents' => $threshold,
+            // Per-shop display permission for merchant product images.
+            // Default OFF: the frontend renders image_url only when true.
+            'product_images_enabled' => !empty($row['product_images_enabled']),
             // Affiliate config belongs to the shop; null = disabled.
             'affiliate' => OutboundLink::configFromShopRow($row),
         ];

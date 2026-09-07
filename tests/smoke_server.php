@@ -39,6 +39,7 @@ if ($uri !== '/' && is_file(__DIR__ . '/..' . $uri)
 require __DIR__ . '/../src/Money.php';
 require __DIR__ . '/../src/Cart.php';
 require __DIR__ . '/../src/View.php';
+require __DIR__ . '/../src/Assets.php';
 require __DIR__ . '/../src/Database.php';
 require __DIR__ . '/../src/ShopRepository.php';
 require __DIR__ . '/../src/ProductRepository.php';
@@ -67,6 +68,10 @@ CREATE TABLE VSKR_shops (
     affiliate_param TEXT,
     affiliate_value TEXT,
     affiliate_template TEXT,
+    source_type TEXT,
+    source_url TEXT,
+    source_scope TEXT NOT NULL DEFAULT "default",
+    product_images_enabled INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE VSKR_products (
@@ -79,6 +84,8 @@ CREATE TABLE VSKR_products (
     available INTEGER NOT NULL DEFAULT 1,
     category TEXT,
     image_url TEXT,
+    source_type TEXT,
+    source_scope TEXT NOT NULL DEFAULT "default",
     last_seen_at TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -91,7 +98,7 @@ $shops = [
     [9002, 'Modellbau Hinterhof (TEST DATA)', 'modellbau-test', 'https://example.com/modellbau', '6.49', '90.00', 1],
     [9099, 'Deaktivierter Testshop (TEST DATA)', 'inaktiv-test', 'https://example.com/inaktiv', '4.99', '50.00', 0],
 ];
-$stmt = $pdo->prepare('INSERT INTO VSKR_shops (id,name,slug,website_url,shipping_cost,free_shipping_threshold,active) VALUES (?,?,?,?,?,?,?)');
+$stmt = $pdo->prepare('INSERT INTO VSKR_shops (id,name,slug,website_url,shipping_cost,free_shipping_threshold,active,product_images_enabled) VALUES (?,?,?,?,?,?,?,0)');
 foreach ($shops as $s) { $stmt->execute($s); }
 
 $products = [
@@ -105,7 +112,7 @@ $products = [
     [9002, 'TEST-2001', '[TEST] Farben-Set (ANDERER SHOP)', 'https://example.com/m/1', '24.66', 1, 'Farben', null],
     [9002, 'TEST-2002', '[TEST] Kleinteile-Box (ANDERER SHOP)', 'https://example.com/m/2', '25.00', 1, 'Werkzeug', null],
 ];
-$stmt = $pdo->prepare('INSERT INTO VSKR_products (shop_id,external_id,name,url,price,available,category,image_url) VALUES (?,?,?,?,?,?,?,?)');
+$stmt = $pdo->prepare('INSERT INTO VSKR_products (shop_id,external_id,name,url,price,available,category,image_url,source_type,source_scope) VALUES (?,?,?,?,?,?,?,?,"shopify","test-scope")');
 foreach ($products as $p) { $stmt->execute($p); }
 
 // Patch: give the smoke Database a SQLite PDO.
