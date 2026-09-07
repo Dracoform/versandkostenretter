@@ -8,8 +8,8 @@
   var form = document.querySelector('.search-form');
   if (!form) return;
 
-  var shopSelect = document.getElementById('shop_id');
-  var cartInput = document.getElementById('cart_value');
+  var shopSelect = document.getElementById('shop');
+  var cartInput = document.getElementById('cart');
 
   // Client-side validation hints (server still validates everything).
   form.addEventListener('submit', function (ev) {
