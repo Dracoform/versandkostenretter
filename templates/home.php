@@ -80,6 +80,14 @@ require __DIR__ . '/layout_header.php';
   </form>
 </section>
 
+<?php if (($rescueAttempts ?? 0) > 0): ?>
+<p class="rescue-counter">
+  <span aria-hidden="true">🛟</span>
+  Schon <strong><?= \Versandkostenretter\View::e(number_format($rescueAttempts, 0, ',', '.')) ?></strong>
+  Rettungsversuche gestartet!
+</p>
+<?php endif; ?>
+
 <?php if (empty($shops)): ?>
 <section class="notice">
   <p>Aktuell sind keine Shops verfügbar. Bitte schau später wieder vorbei.</p>

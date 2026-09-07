@@ -45,6 +45,7 @@ require __DIR__ . '/../src/ShopRepository.php';
 require __DIR__ . '/../src/ProductRepository.php';
 require __DIR__ . '/../src/OutboundLink.php';
 require __DIR__ . '/../src/CategoryFilter.php';
+require __DIR__ . '/../src/StatsRepository.php';
 
 use Versandkostenretter\Database;
 
