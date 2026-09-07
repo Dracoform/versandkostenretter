@@ -96,7 +96,10 @@ require __DIR__ . '/layout_header.php';
           $effective = \Versandkostenretter\Cart::effectiveExtraCostCents($p['price_cents'], $shop['shipping_cost_cents']);
           // Single outbound-link component: canonical URL in, safe URL out.
           $link = OutboundLink::build($p['url'], $shop['affiliate']);
-          $outboundUrl = $link['url'];
+          // Links route through the privacy-preserving local outbound
+          // endpoint (aggregate click counter); it performs the identical
+          // OutboundLink transformation server-side.
+          $goUrl = '/go/' . View::e($p['external_id']);
           $safeImg = View::safeUrl($p['image_url']);
       ?>
         <li class="product-card">
@@ -111,7 +114,7 @@ require __DIR__ . '/layout_header.php';
           <div class="product-body">
             <h3 class="product-name">
               <?php if ($outboundUrl !== null): ?>
-                <a href="<?= View::e($outboundUrl) ?>" rel="nofollow noopener" target="_blank"><?= View::e($p['name']) ?></a>
+                <a href="<?= $goUrl ?>" rel="nofollow noopener"><?= View::e($p['name']) ?></a>
               <?php else: ?>
                 <?= View::e($p['name']) ?>
               <?php endif; ?>
@@ -127,7 +130,7 @@ require __DIR__ . '/layout_header.php';
           <div class="product-price">
             <?= Money::formatEuro($p['price_cents']) ?>
             <?php if ($outboundUrl !== null): ?>
-              <a class="btn-secondary" href="<?= View::e($outboundUrl) ?>" rel="nofollow noopener" target="_blank">Zum Shop</a>
+              <a class="btn-secondary" href="<?= $goUrl ?>" rel="nofollow noopener">Zum Shop</a>
             <?php endif; ?>
           </div>
         </li>

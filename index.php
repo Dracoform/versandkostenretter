@@ -108,6 +108,22 @@ set_exception_handler(function (\Throwable $e) use ($debug): void {
 // ---------------------------------------------------------------
 // routing
 // ---------------------------------------------------------------
+// Privacy-preserving outbound click endpoint: /go/<product-id>
+// (aggregate +1, then redirect to the merchant — see StatsRepository
+//  and OutboundLink for the data-minimisation and redirect policies).
+$goUri = strtok($_SERVER['REQUEST_URI'] ?? '', '?') ?: '';
+if (str_starts_with($goUri, '/go/')) {
+    // Anything under /go/ that is not a valid product id is a safe 404
+    // (never the homepage, never an increment).
+    if (preg_match('#^/go/([A-Za-z0-9_-]{1,64})$#', $goUri, $goMatch)) {
+        vskr_handle_go($goMatch[1]);
+    }
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    header('X-Robots-Tag: noindex');
+    exit('404');
+}
+
 $route = isset($_GET['page']) ? (string) $_GET['page'] : '';
 
 match ($route) {
@@ -147,11 +163,81 @@ function vskr_handle_home(array $config, int $maxResults): void
     vskr_render_home();
 }
 
+/**
+ * Outbound product click: increment the global aggregate counter, then
+ * redirect to the merchant. Privacy-preserving (aggregate only) and
+ * fail-open for the user: a counter failure never blocks the click.
+ */
+function vskr_handle_go(string $productId): never
+{
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Cache-Control: no-store');
+    header('X-Robots-Tag: noindex');
+
+    // Strictly numeric external ids (Shopify numeric ids, future sources
+    // must stay within [A-Za-z0-9_-]); anything else is a safe 404.
+    if (!preg_match('/^[0-9]{1,19}$/', $productId)) {
+        exit('404');
+    }
+
+    try {
+        $db = \Versandkostenretter\Database::fromConfigFile(vskr_config_path());
+        $stmt = $db->pdo()->prepare(
+            'SELECT p.url, s.affiliate_enabled, s.affiliate_mode, s.affiliate_param,
+                    s.affiliate_value, s.affiliate_template
+             FROM VSKR_products p
+             JOIN VSKR_shops s ON s.id = p.shop_id
+             WHERE p.external_id = :eid
+             LIMIT 1'
+        );
+        $stmt->execute([':eid' => $productId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) {
+        error_log('[vskr-go] product lookup failed'); // no internals leaked
+        exit('404');
+    }
+
+    if ($row === false) {
+        exit('404'); // unknown product: no increment, no redirect
+    }
+
+    $affiliate = \Versandkostenretter\OutboundLink::configFromShopRow($row);
+    try {
+        $link = \Versandkostenretter\OutboundLink::build((string) $row['url'], $affiliate);
+    } catch (\Throwable $e) {
+        exit('404'); // unsafe merchant URL: fail closed, no increment
+    }
+    if ($link['is_affiliate'] && !str_starts_with($link['url'], 'https://')) {
+        exit('404');
+    }
+
+    // The click is valid: count it best-effort, then redirect regardless.
+    try {
+        (new \Versandkostenretter\StatsRepository($db->pdo()))
+            ->increment(\Versandkostenretter\StatsRepository::OUTBOUND_PRODUCT_CLICKS);
+    } catch (\Throwable $e) {
+        error_log('[vskr-go] counter increment failed'); // click still proceeds
+    }
+
+    // Aggregate-only redirect: strip cache/robot confusion, set no cookies,
+    // start no session, add no tracking parameters.
+    header('Location: ' . $link['url'], true, 302);
+    header('Cache-Control: no-store');
+    header('X-Robots-Tag: noindex');
+    exit;
+}
+
 function vskr_render_home(): void
 {
     $db = \Versandkostenretter\Database::fromConfigFile(vskr_config_path());
     $shopRepo = new \Versandkostenretter\ShopRepository($db);
     $shops = $shopRepo->activeShops();
+
+    // Aggregate rescue-attempt counter (privacy-preserving, data-minimal).
+    // Display choice: hidden at 0 (cleaner than showing an empty brag).
+    $rescueAttempts = (new \Versandkostenretter\StatsRepository($db->pdo()))
+        ->get(\Versandkostenretter\StatsRepository::OUTBOUND_PRODUCT_CLICKS);
 
     $pageTitle = 'Versandkostenretter — Rette deinen Warenkorb!';
     require __DIR__ . '/templates/home.php';
