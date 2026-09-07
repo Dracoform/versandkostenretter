@@ -1,0 +1,50 @@
+# ============================================================================
+# Versandkostenretter — Apache config (Plesk shared hosting)
+#
+# DEPLOYMENT LAYOUT (fixed document root constraint):
+#   Document root = /versandkostenretter.de/httpdocs = this repository root.
+#   The whole repo is deployed, so non-public directories are DENIED here.
+#   DB credentials live OUTSIDE the document root at
+#   /versandkostenretter.de/config/config.php (never in the repository).
+# ============================================================================
+
+Options -Indexes
+
+# --- Deny all application-only directories (defense in depth) ---------------
+# Each directory additionally carries its own deny-all .htaccess; these rules
+# make the block explicit even if a subdirectory override is lost.
+RedirectMatch 404 ^/(src|templates|tests|database|config|assets-design)(/|$)
+
+# --- Deny sensitive file types anywhere --------------------------------------
+<FilesMatch "\.(sql|md|sh|ini|log|env|example\.php)$|^\.(git|htaccess|gitignore)">
+  Require all denied
+</FilesMatch>
+# index.php is the single entry point; router.php is dev-server-only.
+<FilesMatch "^(router\.php|config\.example\.php)$">
+  Require all denied
+</FilesMatch>
+
+# --- Security headers ----------------------------------------------------------
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/svg+xml "access plus 7 days"
+  ExpiresByType image/png "access plus 7 days"
+  ExpiresByType image/jpeg "access plus 7 days"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Everything that is not a real file/dir goes to the front controller.
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
