@@ -89,20 +89,157 @@ final class Database
      * Guardrail used by tests/CI: every table name mentioned in our SQL must
      * be VSKR_-prefixed. Returns the list of offending table names.
      */
+    public const METADATA_SCHEMA = 'information_schema';
+
+    /**
+     * Statement-aware VSKR namespace guard.
+     *
+     * Validation model:
+     *  1. The SQL is split into statements; comments and string literals are
+     *     stripped FIRST so their prose/content can never be mistaken for
+     *     table names (the old regex read "the" out of a comment).
+     *  2. Each statement is classified:
+     *       - SELECT ... FROM information_schema.*   => allowed (read-only
+     *         metadata queries used by our idempotent migrations)
+     *       - any write/DDL target (CREATE/ALTER/DROP/INSERT/UPDATE/DELETE/
+     *         REPLACE/TRUNCATE/RENAME)                => table MUST be VSKR_*
+     *       - any other reference to a non-VSKR table => rejected
+     *  3. information_schema is metadata-READ-only: any statement that would
+     *     write to it (or any other non-VSKR schema) is rejected.
+     *
+     * @return list<string> offending table/schema identifiers (empty = valid)
+     */
     public static function assertOnlyVskrTables(string $sql): array
     {
         $violations = [];
-        // 'CREATE TABLE IF NOT EXISTS' / 'DROP TABLE IF EXISTS': skip the IF NOT
-        // keywords so the actual table name is captured.
-        $normalized = preg_replace('/\b(TABLE)\s+IF\s+NOT\s+EXISTS\b/i', '$1', $sql);
-        if (preg_match_all('/\b(FROM|JOIN|INTO|UPDATE|TABLE)\s+`?([A-Za-z0-9_]+)`?/i', $normalized, $m, PREG_SET_ORDER)) {
+        foreach (self::splitStatements($sql) as $statement) {
+            foreach (self::validateStatement($statement) as $v) {
+                $violations[] = $v;
+            }
+        }
+        return array_values(array_unique($violations));
+    }
+
+    /**
+     * Strip comments ('-- ...', '# ...', '/* ... *''.'/') and string literals
+     * ('...' and "...") with backslash-escape awareness, then split into
+     * statements on semicolons that terminate a statement.
+     *
+     * @return list<string>
+     */
+    private static function splitStatements(string $sql): array
+    {
+        $out = '';
+        $len = strlen($sql);
+        $i = 0;
+        while ($i < $len) {
+            $c = $sql[$i];
+            $two = substr($sql, $i, 2);
+
+            if ($two === '--' || $c === '#') {                 // line comment
+                while ($i < $len && $sql[$i] !== "\n") { $i++; }
+                $out .= ' ';
+                continue;
+            }
+            if ($two === '/*') {                               // block comment
+                $end = strpos($sql, '*/', $i + 2);
+                $i = $end === false ? $len : $end + 2;
+                $out .= ' ';
+                continue;
+            }
+            if ($c === "'" || $c === '"' || $c === '`') {      // string/identifier
+                $quote = $c;
+                $out .= ' ';                                   // content never reaches the parser
+                $i++;
+                while ($i < $len) {
+                    if ($sql[$i] === '\\' && $quote !== '`') { $i += 2; continue; } // escaped char
+                    if ($sql[$i] === $quote) {
+                        if ($quote === "'" && ($sql[$i + 1] ?? '') === "'") { $i += 2; continue; } // '' escape
+                        $i++;
+                        break;
+                    }
+                    $i++;
+                }
+                continue;
+            }
+
+            $out .= $c;
+            $i++;
+        }
+
+        $statements = [];
+        foreach (preg_split('/;\s*\n|;/u', $out) ?: [] as $part) {
+            $part = trim($part);
+            if ($part !== '') {
+                $statements[] = $part;
+            }
+        }
+        return $statements;
+    }
+
+    /**
+     * Validate one comment-free, literal-free statement.
+     *
+     * @return list<string>
+     */
+    private static function validateStatement(string $statement): array
+    {
+        $violations = [];
+        // Write/DDL verbs: their TARGET must be VSKR_*.
+        // Note: 'ON DUPLICATE KEY UPDATE <col> = ...' is a clause of the INSERT,
+        // not a statement whose target is a table — excluded explicitly.
+        $writeTargets = [];
+
+        // CREATE INDEX <name> ON <table> / DROP INDEX <name> ON <table>:
+        // the target is the table after ON.
+        if (preg_match_all('/\b(?:CREATE|DROP)\s+INDEX\s+`?[A-Za-z0-9_]+`?\s+ON\s+`?([A-Za-z0-9_]+)`?(?:\s*\.\s*`?([A-Za-z0-9_]+)`?)?/i', $statement, $mi, PREG_SET_ORDER)) {
+            foreach ($mi as $hit) {
+                $writeTargets[] = ($hit[2] ?? '') !== '' ? $hit[2] : $hit[1];
+            }
+        }
+
+        if (preg_match_all('/\b(?:(?<!KEY\s)UPDATE|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|INSERT\s+INTO|DELETE\s+FROM|REPLACE\s+INTO|TRUNCATE(?:\s+TABLE)?|RENAME\s+TO)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?`?([A-Za-z0-9_]+)`?(?:\s*\.\s*`?([A-Za-z0-9_]+)`?)?/i', $statement, $m, PREG_SET_ORDER)) {
             foreach ($m as $hit) {
-                $table = $hit[2];
-                if (!str_starts_with($table, 'VSKR_')) {
-                    $violations[] = $table;
+                // 'UPDATE' handled via negative lookbehind; optional
+                // IF [NOT] EXISTS is skipped so the real table is captured;
+                // schema.table form: hit[2] holds the table, hit[1] the schema.
+                if (($hit[2] ?? '') !== '') {
+                    $writeTargets[] = $hit[1];
+                    $writeTargets[] = $hit[2];
+                } else {
+                    $writeTargets[] = $hit[1];
                 }
             }
         }
+        foreach ($writeTargets as $target) {
+            $uTarget = strtoupper($target);
+            if ($uTarget === strtoupper(self::METADATA_SCHEMA) || str_starts_with($uTarget, strtoupper(self::METADATA_SCHEMA) . '_')) {
+                $violations[] = $target; // metadata schema is READ-only
+            } elseif (!str_starts_with($target, 'VSKR_')) {
+                $violations[] = $target;
+            }
+        }
+
+        // Read paths: FROM / JOIN. information_schema allowed, anything else
+        // non-VSKR rejected.
+        if (preg_match_all('/\b(?:FROM|JOIN)\s+`?([A-Za-z0-9_]+)`?(?:\s*\.\s*`?([A-Za-z0-9_]+)`?)?/i', $statement, $m, PREG_SET_ORDER)) {
+            foreach ($m as $hit) {
+                $first = $hit[1];
+                $second = $hit[2] ?? '';
+                if ($second !== '') {
+                    // Qualified name schema.table: only the metadata schema may
+                    // be read outside VSKR_.
+                    if (strtoupper($first) !== strtoupper(self::METADATA_SCHEMA)) {
+                        $violations[] = $first;
+                    }
+                    continue;
+                }
+                if (!str_starts_with($first, 'VSKR_') && strtoupper($first) !== strtoupper(self::METADATA_SCHEMA)) {
+                    $violations[] = $first;
+                }
+            }
+        }
+
         return $violations;
     }
 }
