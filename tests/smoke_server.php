@@ -136,7 +136,7 @@ if ($route === 'datenschutz' || $route === 'impressum') {
 if ($route !== '' && $route !== null) {
     http_response_code(404);
     $pageTitle = 'Seite nicht gefunden';
-    require __DIR__ . '/templates/404.php';
+    require __DIR__ . '/../templates/404.php';
     exit;
 }
 

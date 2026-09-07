@@ -76,7 +76,7 @@ function vskr_config_path(): string
     if (!is_string($path) || $path === '') {
         throw new RuntimeException(
             'Database configuration missing. Expected at '
-            . dirname(__DIR__, 2) . '/config/config.php (outside the document root).'
+            . dirname(__DIR__) . '/config/config.php (outside the document root).'
         );
     }
     return $path;
@@ -148,7 +148,7 @@ function vskr_render_home(): void
     $shops = $shopRepo->activeShops();
 
     $pageTitle = 'Versandkostenretter — Rette deinen Warenkorb!';
-    require dirname(__DIR__) . '/templates/home.php';
+    require __DIR__ . '/templates/home.php';
 }
 
 function vskr_render_results(array $config, int $maxResults): void
@@ -221,7 +221,7 @@ function vskr_render_results(array $config, int $maxResults): void
 
     $shops = $shopRepo->activeShops();
     $pageTitle = 'Versandkostenretter — Ergebnisse';
-    require dirname(__DIR__) . '/templates/results.php';
+    require __DIR__ . '/templates/results.php';
 }
 
 function vskr_render_static(string $page): void
@@ -232,14 +232,14 @@ function vskr_render_static(string $page): void
         return;
     }
     $pageTitle = 'Versandkostenretter — ' . $allowed[$page];
-    require dirname(__DIR__) . '/templates/' . $page . '.php';
+    require __DIR__ . '/templates/' . $page . '.php';
 }
 
 function vskr_render_404(): never
 {
     http_response_code(404);
     $pageTitle = 'Seite nicht gefunden';
-    require dirname(__DIR__) . '/templates/404.php';
+    require __DIR__ . '/templates/404.php';
 }
 
 function vskr_health(array $config): never
