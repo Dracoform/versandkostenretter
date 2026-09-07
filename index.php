@@ -68,6 +68,10 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
+// Asset cache busting: version URLs from the deployed file's mtime
+// (deterministic; no sessions, no cookies).
+\Versandkostenretter\Assets::setDocRoot(__DIR__);
+
 /**
  * Resolved path of the DB config file (outside the document root on Plesk:
  * /versandkostenretter.de/config/config.php).

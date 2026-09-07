@@ -77,6 +77,7 @@ CREATE TABLE VSKR_shops (
     affiliate_enabled INTEGER NOT NULL DEFAULT 0, affiliate_mode TEXT,
     affiliate_param TEXT, affiliate_value TEXT, affiliate_template TEXT,
     source_type TEXT, source_url TEXT, source_scope TEXT NOT NULL DEFAULT "default",
+    product_images_enabled INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE VSKR_products (
@@ -181,7 +182,7 @@ $rr = function (string $dir): void {
     }
     @rmdir($dir);
 };
-$rr($root);
+print("KEEP: $root\n");
 
 print("\nAutoload tests: {$pass} passed, {$fail} failed\n");
 exit($fail === 0 ? 0 : 1);

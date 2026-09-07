@@ -13,7 +13,7 @@
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#0d9488">
 <title><?= \Versandkostenretter\View::e($pageTitle) ?></title>
-<link rel="stylesheet" href="/assets/css/main.css">
+<link rel="stylesheet" href="<?= \Versandkostenretter\Assets::url('/assets/css/main.css') ?>">
 </head>
 <body class="<?= \Versandkostenretter\View::e($bodyClass ?? '') ?>">
 <a class="skip-link" href="#main">Zum Inhalt springen</a>

@@ -100,7 +100,10 @@ require __DIR__ . '/layout_header.php';
           $safeImg = View::safeUrl($p['image_url']);
       ?>
         <li class="product-card">
-          <?php if ($safeImg !== null): ?>
+          <?php
+          // Display permission: merchant images only when the shop allows it.
+          // When disabled: neutral LOCAL placeholder, zero external requests.
+          if ($safeImg !== null && !empty($shop['product_images_enabled'])): ?>
             <img class="product-img" src="<?= View::e($safeImg) ?>" alt="" loading="lazy" width="96" height="96">
           <?php else: ?>
             <span class="product-img product-img-fallback" aria-hidden="true">📦</span>

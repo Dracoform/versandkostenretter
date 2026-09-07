@@ -9,6 +9,6 @@
   </nav>
   <p class="footer-note">Keine Cookies, kein Tracking, keine Werbung.</p>
 </footer>
-<script src="/assets/js/main.js" defer></script>
+<script src="<?= \Versandkostenretter\Assets::url('/assets/js/main.js') ?>" defer></script>
 </body>
 </html>

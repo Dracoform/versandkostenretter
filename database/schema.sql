@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS VSKR_shops (
     source_type              VARCHAR(50)      NULL,
     source_url               VARCHAR(1000)    NULL,
     source_scope             VARCHAR(190)     NOT NULL DEFAULT 'default',
+    -- Per-shop DISPLAY permission for merchant product images.
+    -- DEFAULT OFF: merchant product images may only be rendered as <img>
+    -- when this is 1; otherwise the frontend shows a neutral local
+    -- placeholder and makes no external image/CDN request. The importer
+    -- still stores VSKR_products.image_url; unrelated to affiliate config.
+    product_images_enabled   TINYINT(1)       NOT NULL DEFAULT 0,
     -- Optional affiliate configuration. DISABLED BY DEFAULT for every shop;
     -- NULL everywhere means "no affiliate program". No real IDs are stored.
     -- url column of VSKR_products ALWAYS holds the canonical merchant URL;
