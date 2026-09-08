@@ -20,6 +20,7 @@ require __DIR__ . '/../../src/Import/SourceException.php';
 require __DIR__ . '/../../src/Import/SourceFetcher.php';
 require __DIR__ . '/../../src/Import/HttpClient.php';
 require __DIR__ . '/../../src/Import/ShopifyMapper.php';
+require __DIR__ . '/../../src/Import/NormalizedProduct.php';
 require __DIR__ . '/../../src/Import/ImportRepository.php';
 require __DIR__ . '/../../src/Import/ShopifyImporter.php';
 
@@ -109,19 +110,19 @@ $t->check('valid feed: 2 products mapped', count($mapped['products']), 2);
 $t->check('valid feed: nothing skipped', $mapped['skipped'], []);
 
 $p0 = $mapped['products'][0];
-$t->check('external_id = stringified product id', $p0['external_id'], '111111');
-$t->check('name = title', $p0['name'], 'Wet Palette');
-$t->check('canonical URL from handle', $p0['url'], 'https://lootforge.de/products/wet-palette');
-$t->check('price mapped to cents', $p0['price_cents'], 2699);
-$t->check('availability true', $p0['available'], true);
-$t->check('image_url = first image src', $p0['image_url'], 'https://cdn.shopify.com/s/files/1/1/files/wp.webp?v=1');
-$t->check('category: first tag when product_type empty', $p0['category'], 'Wet Palette');
-$t->check('source_updated_at carried', $p0['source_updated_at'], '2026-09-01T10:00:00+02:00');
+$t->check('external_id = stringified product id', $p0->externalId, '111111');
+$t->check('name = title', $p0->name, 'Wet Palette');
+$t->check('canonical URL from handle', $p0->canonicalUrl, 'https://lootforge.de/products/wet-palette');
+$t->check('price mapped to cents', $p0->priceCents, 2699);
+$t->check('availability true', $p0->availabilityState === \Versandkostenretter\Import\NormalizedProduct::AV_AVAILABLE, true);
+$t->check('image_url = first image src', $p0->imageUrl, 'https://cdn.shopify.com/s/files/1/1/files/wp.webp?v=1');
+$t->check('category: first tag when product_type empty', $p0->category, 'Wet Palette');
+$t->check('source_updated_at carried', $p0->sourceUpdatedAt, '2026-09-01T10:00:00+02:00');
 
 $p1 = $mapped['products'][1];
-$t->check('category: product_type wins over tags', $p1['category'], 'Pinsel');
-$t->check('unavailable product mapped as unavailable', $p1['available'], false);
-$t->check('missing image -> image_url null', $p1['image_url'], null);
+$t->check('category: product_type wins over tags', $p1->category, 'Pinsel');
+$t->assertTrue('unavailable product mapped as UNAVAILABLE state', $p1->availabilityState === \Versandkostenretter\Import\NormalizedProduct::AV_UNAVAILABLE);
+$t->check('missing image -> image_url null', $p1->imageUrl, null);
 
 /* =============================================================
  * Category mapping determinism
@@ -131,14 +132,14 @@ $tagsString = ['products' => [
      'variants' => [['price' => '1.00', 'available' => true]]],
 ]];
 $m = ShopifyMapper::mapFeed($tagsString, 'https://s.example');
-$t->check('category: comma-string tags handled', $m['products'][0]['category'], 'Wet Palette');
+$t->check('category: comma-string tags handled', $m['products'][0]->category, 'Wet Palette');
 
 $noCats = ['products' => [
     ['id' => 6, 'title' => 'X', 'handle' => 'x', 'tags' => [], 'product_type' => '',
      'variants' => [['price' => '1.00', 'available' => true]]],
 ]];
 $m = ShopifyMapper::mapFeed($noCats, 'https://s.example');
-$t->check('category: null when merchant provides none', $m['products'][0]['category'], null);
+$t->check('category: null when merchant provides none', $m['products'][0]->category, null);
 
 /* =============================================================
  * Canonical URL / unsafe URL rejection
@@ -148,8 +149,8 @@ $m = ShopifyMapper::mapFeed(['products' => [
      'variants' => [['price' => '2.00', 'available' => true]]],
 ]], 'https://lootforge.de');
 $t->assertTrue('canonical URL: handle is rawurlencoded',
-    $m['products'][0]['url'] === 'https://lootforge.de/products/' . rawurlencode('ünicode-prödukt'),
-    $m['products'][0]['url']);
+    $m['products'][0]->canonicalUrl === 'https://lootforge.de/products/' . rawurlencode('ünicode-prödukt'),
+    $m['products'][0]->canonicalUrl);
 
 $badHandle = ['products' => [
     ['id' => 8, 'title' => 'X', 'handle' => '',
@@ -166,7 +167,7 @@ $single = ['products' => [
     ['id' => 10, 'title' => 'S', 'handle' => 's', 'variants' => [['price' => '5.00', 'available' => true]]],
 ]];
 $m = ShopifyMapper::mapFeed($single, 'https://s.example');
-$t->check('single variant: used directly', $m['products'][0]['price_cents'], 500);
+$t->check('single variant: used directly', $m['products'][0]->priceCents, 500);
 
 $samePrice = ['products' => [
     ['id' => 11, 'title' => 'S', 'handle' => 's', 'variants' => [
@@ -174,7 +175,7 @@ $samePrice = ['products' => [
     ]],
 ]];
 $m = ShopifyMapper::mapFeed($samePrice, 'https://s.example');
-$t->check('multi-variant same price: first variant used', $m['products'][0]['price_cents'], 500);
+$t->check('multi-variant same price: first variant used', $m['products'][0]->priceCents, 500);
 
 $multiPrice = ['products' => [
     ['id' => 12, 'title' => 'M', 'handle' => 'm', 'variants' => [
@@ -247,11 +248,13 @@ $pdo->exec("INSERT INTO VSKR_shops (id,name,slug,website_url,shipping_cost,free_
 
 $repo = new ImportRepository($pdo);
 
-$mkProduct = fn (string $id, string $name, int $cents, bool $avail = true, string $cat = 'Cat') => [
-    'external_id' => $id, 'name' => $name, 'url' => "https://lootforge.de/products/{$id}",
-    'price_cents' => $cents, 'available' => $avail, 'category' => $cat,
-    'image_url' => null, 'source_updated_at' => null,
-];
+$mkProduct = fn (string $id, string $name, int $cents, bool $avail = true, string $cat = 'Cat')
+    => new \Versandkostenretter\Import\NormalizedProduct(
+        externalId: $id, name: $name, canonicalUrl: "https://lootforge.de/products/{$id}",
+        priceCents: $cents,
+        availabilityState: $avail ? \Versandkostenretter\Import\NormalizedProduct::AV_AVAILABLE : \Versandkostenretter\Import\NormalizedProduct::AV_UNAVAILABLE,
+        category: $cat, imageUrl: null, sourceUpdatedAt: null,
+    );
 
 // first import: inserts
 $batch1 = [$mkProduct('A1', 'Prod A1', 1099), $mkProduct('A2', 'Prod A2', 2499)];

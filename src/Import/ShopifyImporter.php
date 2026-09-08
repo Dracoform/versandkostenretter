@@ -95,7 +95,7 @@ final class ShopifyImporter
         // Complete-feed staleness, scoped to (shop, source, scope).
         // Reached ONLY because fetch+parse above succeeded.
         $seen = array_map(
-            static fn (array $p): string => (string) $p['external_id'],
+            static fn (\Versandkostenretter\Import\NormalizedProduct $p): string => $p->externalId,
             $mapped['products']
         );
         $result['unavailable'] = $this->repo->markStaleUnavailable(

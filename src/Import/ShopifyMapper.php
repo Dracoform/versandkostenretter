@@ -36,7 +36,7 @@ use Versandkostenretter\View;
  */
 final class ShopifyMapper
 {
-    /** @return array{products:list<array<string,mixed>>, skipped:list<array{id:string,title:string,reason:string}>} */
+    /** @return array{products:list<NormalizedProduct>, skipped:list<array{id:string,title:string,reason:string}>} */
     public static function mapFeed(mixed $decoded, string $shopOrigin): array
     {
         if (!is_array($decoded) || !array_key_exists('products', $decoded) || !is_array($decoded['products'])) {
@@ -78,7 +78,7 @@ final class ShopifyMapper
                 $skipped[] = ['id' => $externalId, 'title' => $title, 'reason' => $chosen];
                 continue;
             }
-            [$priceCents, $available] = $chosen;
+            [$priceCents, $availabilityState] = $chosen;
 
             // Image: first image, https only; otherwise NULL (never an unsafe URL).
             $imageUrl = null;
@@ -90,17 +90,17 @@ final class ShopifyMapper
             // Category: product_type first, else first tag. Merchant data verbatim.
             $category = self::categoryOf($p);
 
-            $products[] = [
-                'external_id' => $externalId,
-                'name' => $title,
-                'url' => $url,
-                'price_cents' => $priceCents,
-                'available' => $available,
-                'category' => $category,
-                'image_url' => $imageUrl,
-                'source_updated_at' => isset($p['updated_at']) && is_string($p['updated_at'])
+            $products[] = new NormalizedProduct(
+                externalId: $externalId,
+                name: $title,
+                canonicalUrl: $url,
+                priceCents: $priceCents,
+                availabilityState: $availabilityState,
+                category: $category,
+                imageUrl: $imageUrl,
+                sourceUpdatedAt: isset($p['updated_at']) && is_string($p['updated_at'])
                     ? $p['updated_at'] : null,
-            ];
+            );
         }
 
         return ['products' => $products, 'skipped' => $skipped];
@@ -109,7 +109,7 @@ final class ShopifyMapper
     /**
      * Variant selection policy (see class docblock).
      *
-     * @return array{0:int,1:bool}|string  [priceCents, available] or skip-reason
+     * @return array{0:int,1:string}|string  [priceCents, availabilityState] or skip-reason
      */
     private static function chooseVariant(array $variants): array|string
     {
@@ -128,7 +128,7 @@ final class ShopifyMapper
                 return 'variant with unparsable price';
             }
             if ($first === null) {
-                $first = [$cents, self::availableOf($v)];
+                $first = [$cents, self::availabilityStateOf($v)];
             }
             $prices[$cents] = true;
         }
@@ -140,16 +140,21 @@ final class ShopifyMapper
         return $first; // single variant, or identical prices across variants
     }
 
-    private static function availableOf(array $variant): bool
+    /**
+     * Tri-state availability mapping:
+     *   true  -> AVAILABLE, false -> UNAVAILABLE,
+     *   missing/unreliable -> UNKNOWN (never silently true/false).
+     */
+    private static function availabilityStateOf(array $variant): string
     {
         $a = $variant['available'] ?? null;
-        if (is_bool($a)) {
-            return $a;
+        if ($a === true) {
+            return NormalizedProduct::AV_AVAILABLE;
         }
-        if (is_numeric($a)) {
-            return (int) $a === 1;
+        if ($a === false) {
+            return NormalizedProduct::AV_UNAVAILABLE;
         }
-        return true; // Shopify omits the field on legacy feeds; assume sellable
+        return NormalizedProduct::AV_UNKNOWN; // missing/unreliable data
     }
 
     /** @return string|null */

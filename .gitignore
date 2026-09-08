@@ -9,3 +9,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+storage/
+storage/snapshots/

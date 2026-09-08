@@ -51,7 +51,10 @@ CREATE TABLE IF NOT EXISTS VSKR_products (
     name           VARCHAR(500)  NOT NULL,
     url            VARCHAR(1000) NOT NULL,
     price          DECIMAL(10,2) NOT NULL,
-    available      TINYINT(1)    NOT NULL DEFAULT 1,
+    -- Tri-state availability:
+    --   1 = AVAILABLE, 0 = UNAVAILABLE, NULL = UNKNOWN (source exposes no
+    --   reliable stock data). Public search shows ONLY available = 1.
+    available      TINYINT(1)    NULL DEFAULT NULL,
     category       VARCHAR(190)  NULL,
     image_url      VARCHAR(1000) NULL,
     -- Import provenance: which source feed this row came from and from which
