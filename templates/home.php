@@ -84,7 +84,7 @@ require __DIR__ . '/layout_header.php';
 <p class="rescue-counter">
   <span aria-hidden="true">🛟</span>
   Schon <strong><?= \Versandkostenretter\View::e(number_format($rescueAttempts, 0, ',', '.')) ?></strong>
-  Rettungsversuche gestartet!
+  <?= $rescueAttempts === 1 ? 'Rettungsversuch' : 'Rettungsversuche' ?> gestartet!
 </p>
 <?php endif; ?>
 

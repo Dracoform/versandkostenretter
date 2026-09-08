@@ -240,6 +240,10 @@ function vskr_render_home(): void
         ->get(\Versandkostenretter\StatsRepository::OUTBOUND_PRODUCT_CLICKS);
 
     $pageTitle = 'Versandkostenretter — Rette deinen Warenkorb!';
+    // The homepage displays the live aggregate counter: disallow stale
+    // cached copies (a pre-counter cached page would look like a broken
+    // counter). Assets stay cacheable via their versioned URLs.
+    header('Cache-Control: no-cache, must-revalidate');
     require __DIR__ . '/templates/home.php';
 }
 

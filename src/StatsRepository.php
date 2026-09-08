@@ -68,7 +68,10 @@ final class StatsRepository
             $stmt->execute([':key' => $key]);
             $value = $stmt->fetchColumn();
             return $value === false ? 0 : (int) $value;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            // Still fail-soft for the user (0), but log so operators can
+            // diagnose an invisible counter instead of guessing.
+            error_log('[vskr-stats] reading counter failed: ' . $e->getMessage());
             return 0;
         }
     }
