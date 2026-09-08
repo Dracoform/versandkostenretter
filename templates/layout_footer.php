@@ -3,6 +3,8 @@
 <footer class="site-footer">
   <p class="footer-brand">Mehr Hobby. Weniger Hürden.</p>
   <nav class="footer-nav" aria-label="Rechtliches">
+    <a href="/?page=projekt">Das Projekt</a>
+    <span aria-hidden="true">·</span>
     <a href="/?page=datenschutz">Datenschutz</a>
     <span aria-hidden="true">·</span>
     <a href="/?page=impressum">Impressum</a>
