@@ -76,6 +76,15 @@ final class ImportOrchestrator
             );
             $result['unavailable'] = $this->repo->markStaleUnavailable($shopId, $sourceType, $scope, $seen);
             $result['stale_marked'] = true;
+
+            // Optional source capability: many-to-many merchant category /
+            // collection memberships (delete + replace per shop; stale
+            // memberships cannot survive a complete run).
+            if ($fetched->categoryMemberships !== []) {
+                $result['memberships'] = $this->repo->replaceCategoryMemberships(
+                    $shopId, $fetched->categoryMemberships
+                );
+            }
         }
 
         return $result;

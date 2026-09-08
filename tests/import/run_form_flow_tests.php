@@ -104,7 +104,11 @@ $products = [
     [10293528428873, 'PK-Aluminiumpalette-Rund-10-Näpfe-(17cm)', 'pk-aluminiumpalette-rund-10-n-pfe-17cm', 3.10, 1, 'Farben Zubehör'],
     [10293528265033, 'PK-Agitatorkugel-Set-(50x)', 'pk-agitatorkugel-set-50x', 3.95, 1, 'Farben Zubehör'],
     [10293528297801, 'PK-Aluminiumpalette-Eckig-6-Näpfe-(8x13cm)', 'pk-aluminiumpalette-eckig-6-n-pfe-8x13cm', 2.50, 1, 'Farben Zubehör'],
-    // qualifying (>= 4.66)
+    // qualifying (>= 4.66) — in default window (4.66–6.66)
+    [10293528990001, 'PK-Farbklotsch-Set-Testfenster', 'pk-farbklotsch-set-testfenster', 4.99, 1, 'Farben Zubehör'],
+    [10293528990002, 'PK-Mischbecher-Set-Testfenster', 'pk-mischbecher-set-testfenster', 6.50, 1, 'Pinsel'],
+    [10293528990003, 'PK-Pinsel-Set-35-Euro-Test', 'pk-pinsel-set-35-euro-test', 35.00, 1, 'Pinsel'],
+    // qualifying (>= 4.66), outside default window
     [10293528625481, 'RedgrasGames - Hydration Paper Painter 50 sheets', 'redgrasgames-hydration-paper-painter-50-sheets', 7.20, 1, 'Wet Palette'],
     [10293528494409, 'RedgrasGames - NEW - Painter Lite - 50sheets/2foams', 'redgrasgames-new-painter-lite-50sheets-2foams', 24.00, 1, 'Wet Palette'],
     [10293485502793, 'Wet Palette', 'wet-palette', 26.99, 1, 'Wet Palette'],
@@ -181,16 +185,21 @@ $check('comma decimal: Lootforge shown as shop', str_contains($r['body'], 'Lootf
 $check('comma decimal: cart value shown (95,34 €)', str_contains($r['body'], '95,34'));
 $check('comma decimal: threshold 100,00 € shown', str_contains($r['body'], '100,00'));
 $check('comma decimal: missing amount 4,66 € shown', str_contains($r['body'], '4,66'));
+// Default window (missing 4,66 -> 4,66-6,66): only in-window products listed.
 foreach (['7,20', '24,00', '26,99', '37,99'] as $price) {
-    $check("comma decimal: qualifying product {$price} listed", str_contains($r['body'], $price));
+    $check("comma decimal DEFAULT WINDOW excludes {$price}", !str_contains($r['body'], $price));
+}
+$rx = vskr_http($base . '/?shop=lootforge&cart=95,34&expanded=1');
+foreach (['7,20', '24,00', '26,99', '37,99'] as $price) {
+    $check("comma decimal EXPANDED lists {$price}", str_contains($rx['body'], $price));
 }
 foreach (['2,65', '3,10', '3,95', '2,50'] as $price) {
     $check("comma decimal: below-threshold product {$price} NOT listed", !str_contains($r['body'], $price));
 }
-$check('comma decimal: ascending order (7,20 before 24,00 before 26,99 before 37,99)',
-    strpos($r['body'], '7,20') < strpos($r['body'], '24,00')
-    && strpos($r['body'], '24,00') < strpos($r['body'], '26,99')
-    && strpos($r['body'], '26,99') < strpos($r['body'], '37,99'));
+$r2 = vskr_http($base . '/?shop=lootforge&cart=95,34');
+$check('comma decimal: ascending order in default window (4,99 -> 6,50)',
+    strpos($r2['body'], 'PK-Farbklotsch-Set-Testfenster') < strpos($r2['body'], 'PK-Mischbecher-Set-Testfenster'));
+$check('comma decimal: 7,20 excluded from default window', !str_contains($r2['body'], 'RedgrasGames - Hydration Paper Painter'));
 
 /* =============================================================
  * 2. GET dot decimal — still works
@@ -199,8 +208,7 @@ $r = vskr_http($base . '/?shop=lootforge&cart=95.34');
 $check('dot decimal: results 200, no errors', $r['status'] === 200
     && !str_contains($r['body'], 'Bitte gib deinen aktuellen Warenkorbwert ein'));
 $check('dot decimal: missing amount 4,66 € shown', str_contains($r['body'], '4,66'));
-$check('dot decimal: same qualifying products', str_contains($r['body'], '7,20')
-    && str_contains($r['body'], '37,99'));
+$check('dot decimal: same default-window behavior (no 7,20+ products)', !str_contains($r['body'], '7,20'));
 
 /* =============================================================
  * 3. POST form submit with the REAL field names (shop, cart)
@@ -235,11 +243,23 @@ $check('unknown shop -> validation error', str_contains($r['body'], 'Unbekannter
 /* =============================================================
  * 5. Category filter still works
  * ============================================================= */
-$r = vskr_http($base . '/?shop=lootforge&cart=95,34&category=' . urlencode('Wet Palette'));
+$r = vskr_http($base . '/?shop=lootforge&cart=95,34&category=Pinsel');
 $check('category filter: results 200', $r['status'] === 200);
-$check('category filter: Wet Palette products listed', str_contains($r['body'], '7,20') && str_contains($r['body'], '37,99'));
-// nothing from the other category leaked in:
-$check('category filter: other category excluded (2,65 not listed)', !str_contains($r['body'], '2,65'));
+// Existing category 'Pinsel' + default window: only the in-window Pinsel
+// product (6,50) listed; Farben Zubehör / out-of-window excluded.
+$check('category filter (Pinsel, default window 4,66-6,66): only in-window Pinsel listed',
+    str_contains($r['body'], 'PK-Mischbecher-Set-Testfenster')
+    && !str_contains($r['body'], 'PK-Farbklotsch-Set-Testfenster')
+    && !str_contains($r['body'], 'RedgrasGames - Hydration Paper Painter'));
+// expanded + category: that category at >= missing, no upper bound:
+// Nonexistent category falls back safely to "Alle" (no error, no leak):
+$rn = vskr_http($base . '/?shop=lootforge&cart=95,34&category=' . urlencode('Gibts-Nicht'));
+$check('nonexistent category: fails safely to Alle (200, in-window products shown)',
+    $rn['status'] === 200 && str_contains($rn['body'], 'PK-Farbklotsch-Set-Testfenster'));
+$rx = vskr_http($base . '/?shop=lootforge&cart=95,34&category=Pinsel&expanded=1');
+$check('category filter EXPANDED: Pinsel products at >= 4,66 listed (incl. 35,00)',
+    str_contains($rx['body'], 'PK-Mischbecher-Set-Testfenster')
+    && str_contains($rx['body'], 'PK-Pinsel-Set-35-Euro-Test'));
 
 /* =============================================================
  * 6. JS/HTML field consistency (root cause of the production bug)

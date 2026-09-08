@@ -170,7 +170,7 @@ $stop = function () use ($proc): void {
 /* ---------------------------------------------------------------
  * A) Link markup
  * --------------------------------------------------------------- */
-$r = vskr_http_pf('/?shop=lootforge&cart=95,34');
+$r = vskr_http_pf('/?shop=lootforge&cart=95,34&expanded=1'); // expanded: link-rendering assertions (default window has no qualifying products in this seed)
 $check('results 200', $r['status'] === 200);
 $check('product-name link has target="_blank"',
     (bool) preg_match('#<a href="/go/111" target="_blank" rel="nofollow noopener noreferrer">#', $r['body']));

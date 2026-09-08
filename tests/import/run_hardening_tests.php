@@ -162,14 +162,14 @@ $http = function (string $path) use ($root): array {
 
 // Disabled shop (Lootforge-like): no merchant image, placeholder instead.
 // cart 45 vs threshold 50 -> missing 5 -> the 9.99 product qualifies.
-$r = $http('/?shop=shop-disabled&cart=45');
+$r = $http('/?shop=shop-disabled&cart=45&expanded=1'); // expanded: image-permission assertions (seed price outside default window)
 $check('disabled shop: results 200', $r['status'] === 200);
 $check('disabled shop: NO <img> with CDN URL', !preg_match('#<img[^>]+src="https?://cdn#i', $r['body']));
 $check('disabled shop: placeholder rendered', str_contains($r['body'], 'product-img-fallback'));
 $check('disabled shop: no cdn.merchant-a.example anywhere in HTML', !str_contains($r['body'], 'cdn.merchant-a.example'));
 
 // Enabled shop: merchant image rendered.
-$r = $http('/?shop=shop-enabled&cart=45');
+$r = $http('/?shop=shop-enabled&cart=45&expanded=1'); // expanded: image-permission assertions (seed price outside default window)
 $check('enabled shop: results 200', $r['status'] === 200);
 $check('enabled shop: <img> with merchant CDN URL', (bool) preg_match('#<img[^>]+src="https://cdn\.merchant-b\.example/img/pb\.png"#i', $r['body']));
 $check('enabled shop: no fallback for this product', !str_contains($r['body'], 'product-img-fallback'));
@@ -207,7 +207,7 @@ $check('versioned asset URL serves CSS', $r['status'] === 200);
 
 // No cookies anywhere.
 $check('no Set-Cookie on homepage', !str_contains($home['raw'], 'set-cookie:'));
-$r = $http('/?shop=shop-disabled&cart=45');
+$r = $http('/?shop=shop-disabled&cart=45&expanded=1'); // expanded: image-permission assertions (seed price outside default window)
 $check('no Set-Cookie on results', !str_contains($r['raw'], 'set-cookie:'));
 
 $stop();

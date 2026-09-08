@@ -185,4 +185,80 @@ final class ImportRepository
         $stmt->execute([':sid' => $shopId]);
         return $stmt->rowCount();
     }
+
+    /**
+     * Replace the category/collection memberships of ONE shop (delete +
+     * insert in one transaction). Called only after a COMPLETE source run,
+     * so removed memberships never remain stale.
+     *
+     * @param array<string, list<string>> $memberships external_id => categories
+     */
+    public function replaceCategoryMemberships(int $shopId, array $memberships): int
+    {
+        // No own transaction boundaries: the caller (stale-marking owner)
+        // runs this inside the import transaction so memberships commit
+        // atomically with the product upserts. Delete+insert per shop means
+        // removed memberships never remain stale.
+        $del = $this->pdo->prepare('DELETE FROM VSKR_product_categories WHERE shop_id = :sid');
+        $del->execute([':sid' => $shopId]);
+
+        $ins = $this->pdo->prepare(
+            'INSERT INTO VSKR_product_categories (shop_id, external_id, category)
+             VALUES (:sid, :eid, :cat)'
+        );
+        $n = 0;
+        foreach ($memberships as $externalId => $cats) {
+            foreach ($cats as $cat) {
+                if (!is_string($cat) || $cat === '') {
+                    continue;
+                }
+                $ins->execute([':sid' => $shopId, ':eid' => $externalId, ':cat' => $cat]);
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    /**
+     * Category memberships for ONE shop: union of the single `category`
+     * column and the many-to-many table.
+     *
+     * @return array<string, list<string>> external_id => categories
+     */
+    public function categoryMemberships(int $shopId): array
+    {
+        $map = [];
+        try {
+            return $this->categoryMembershipsInner($shopId);
+        } catch (\PDOException $e) {
+            // Optional feature: shops without migration 0008 keep working
+            // (single-category column filtering). Log for diagnosis.
+            error_log('[vskr-stats] category-membership read failed: ' . $e->getMessage());
+            return $map;
+        }
+    }
+
+    private function categoryMembershipsInner(int $shopId): array
+    {
+        $map = [];
+        $stmt = $this->pdo->prepare(
+            "SELECT external_id, category FROM VSKR_products
+             WHERE shop_id = :sid AND category IS NOT NULL AND category <> ''"
+        );
+        $stmt->execute([':sid' => $shopId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $map[$r['external_id']][] = $r['category'];
+        }
+        $stmt = $this->pdo->prepare(
+            'SELECT external_id, category FROM VSKR_product_categories WHERE shop_id = :sid'
+        );
+        $stmt->execute([':sid' => $shopId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $map[$r['external_id']][] = $r['category'];
+        }
+        foreach ($map as $k => $v) {
+            $map[$k] = array_values(array_unique($v));
+        }
+        return $map;
+    }
 }

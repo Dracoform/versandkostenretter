@@ -43,9 +43,48 @@ final class CategoryFilter
         if ($requested === null || $requested === '') {
             return false;
         }
-        if ((function_exists('mb_strlen') ? mb_strlen($requested) : strlen($requested)) > 190) {
+        $len = function_exists('mb_strlen') ? mb_strlen($requested) : strlen($requested);
+        if ($len > 190) {
             return false;
         }
-        return in_array($requested, $categories, true);
+        // Case-insensitive: the URL/dropdown value may differ in casing from
+        // the stored merchant tag (production bug root cause).
+        foreach ($categories as $cat) {
+            $catLower = function_exists('mb_strtolower')
+                ? mb_strtolower($cat, 'UTF-8')
+                : strtolower($cat);
+            $reqLower = function_exists('mb_strtolower')
+                ? mb_strtolower($requested, 'UTF-8')
+                : strtolower($requested);
+            if ($catLower === $reqLower) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Resolve the requested category case-insensitively to the EXACT stored
+     * value (merchant tags may differ in casing from a shared URL). Returns
+     * the exact stored value, or null when no match exists — callers then
+     * fall back to "Alle" (never an error).
+     */
+    public static function resolve(array $categories, ?string $requested): ?string
+    {
+        if (!self::isUsable($categories, $requested)) {
+            return null;
+        }
+        foreach ($categories as $cat) {
+            $lower = function_exists('mb_strtolower')
+                ? mb_strtolower($cat, 'UTF-8')
+                : strtolower($cat);
+            $reqLower = function_exists('mb_strtolower')
+                ? mb_strtolower((string) $requested, 'UTF-8')
+                : strtolower((string) $requested);
+            if ($lower === $reqLower) {
+                return $cat;
+            }
+        }
+        return null;
     }
 }
