@@ -195,15 +195,15 @@ $check('second /go/ -> counter 2', vskr_pf_counter($pdo) === 2);
 // Local image assets (homepage hero) use the same mtime cache busting.
 $homeBody = vskr_http_pf('/');
 $check('homepage hero image URL is versioned (?v=<mtime>)',
-    (bool) preg_match('#/assets/images/hero-raccoon\.jpg\?v=\d+#', $homeBody['body']));
+    (bool) preg_match('#/assets/images/hero-raccoon\.webp\?v=\d+#', $homeBody['body']));
 // Replacing the image file under the SAME filename must change its URL.
-$heroPath = $httpdocs . '/assets/images/hero-raccoon.jpg';
-preg_match('#/assets/images/hero-raccoon\.jpg\?v=(\d+)#', $homeBody['body'], $hv1);
+$heroPath = $httpdocs . '/assets/images/hero-raccoon.webp';
+preg_match('#/assets/images/hero-raccoon\.webp\?v=(\d+)#', $homeBody['body'], $hv1);
 sleep(1);
 touch($heroPath, filemtime($heroPath) + 10);
 clearstatcache(true, $heroPath);
 $r2 = vskr_http_pf('/');
-preg_match('#/assets/images/hero-raccoon\.jpg\?v=(\d+)#', $r2['body'], $hv2);
+preg_match('#/assets/images/hero-raccoon\.webp\?v=(\d+)#', $r2['body'], $hv2);
 $check('replaced image (same filename) gets a new versioned URL',
     ($hv1[1] ?? '') !== '' && ($hv2[1] ?? '') !== '' && $hv1[1] !== $hv2[1],
     ($hv1[1] ?? '?') . ' -> ' . ($hv2[1] ?? '?'));
