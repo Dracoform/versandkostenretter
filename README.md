@@ -46,6 +46,15 @@ The dev seed contains clearly marked fictional shops/products
 (`(TEST DATA)`) — none of the prices or shipping values are verified merchant
 information.
 
+## Replacing local images (e.g. the homepage raccoon)
+
+Commit the replacement under the SAME filename (e.g.
+`assets/images/hero-raccoon.jpg`) and deploy as usual — do NOT place a
+production-local file outside Git (Plesk deployments overwrite it) and do NOT
+create renamed/versioned duplicates. `Assets::url()` mtime cache busting then
+changes the served URL (`…jpg?v=<mtime>`), so browsers fetch the new contents
+automatically; unchanged assets keep their cached URLs.
+
 ## Product importer (CLI, cron-ready)
 
 One-time production setup (run manually, in order):
