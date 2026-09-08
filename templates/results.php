@@ -120,7 +120,7 @@ require __DIR__ . '/layout_header.php';
           <div class="product-body">
             <h3 class="product-name">
               <?php if ($outboundUrl !== null): ?>
-                <a href="<?= $goUrl ?>" rel="nofollow noopener"><?= View::e($p['name']) ?></a>
+                <a href="<?= $goUrl ?>" target="_blank" rel="nofollow noopener noreferrer"><?= View::e($p['name']) ?></a>
               <?php else: ?>
                 <?= View::e($p['name']) ?>
               <?php endif; ?>
@@ -136,7 +136,7 @@ require __DIR__ . '/layout_header.php';
           <div class="product-price">
             <?= Money::formatEuro($p['price_cents']) ?>
             <?php if ($outboundUrl !== null): ?>
-              <a class="btn-secondary" href="<?= $goUrl ?>" rel="nofollow noopener">Zum Shop</a>
+              <a class="btn-secondary" href="<?= $goUrl ?>" target="_blank" rel="nofollow noopener noreferrer">Zum Shop</a>
             <?php endif; ?>
           </div>
         </li>
