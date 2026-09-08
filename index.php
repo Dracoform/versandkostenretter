@@ -130,6 +130,7 @@ match ($route) {
     ''             => vskr_handle_home($config, $maxResults),
     'impressum'    => vskr_render_static('impressum'),
     'datenschutz'  => vskr_render_static('datenschutz'),
+    'projekt'      => vskr_render_static('projekt'),
     'health'       => vskr_health($config),
     default        => vskr_render_404(),
 };
@@ -325,7 +326,8 @@ function vskr_render_results(array $config, int $maxResults): void
 
 function vskr_render_static(string $page): void
 {
-    $allowed = ['impressum' => 'Impressum', 'datenschutz' => 'Datenschutz'];
+    $allowed = ['impressum' => 'Impressum', 'datenschutz' => 'Datenschutz',
+                'projekt' => 'Das Projekt'];
     if (!isset($allowed[$page])) {
         vskr_render_404();
         return;
