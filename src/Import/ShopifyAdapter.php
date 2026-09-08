@@ -135,12 +135,15 @@ final class ShopifyAdapter implements SourceAdapter
             if ($rawCount < 250) {
                 // Catalogue complete. Enrich with merchant COLLECTION
                 // membership (a product may belong to several collections —
-                // never collapse to one).
-                [$memberships, $membershipRequests] = $this->fetchCollectionMemberships($origin, $normalized);
+                // never collapse to one). Null memberships = enrichment
+                // unavailable: callers must keep previously persisted data.
+                [$memberships, $membershipRequests, $warnings] =
+                    $this->fetchCollectionMemberships($origin, $normalized);
                 return new SourceFetchResult(
                     $normalized, $skipped, complete: true,
                     requests: $requests + $membershipRequests,
-                    categoryMemberships: $memberships
+                    categoryMemberships: $memberships,
+                    enrichmentWarnings: $warnings
                 );
             }
 
@@ -160,17 +163,36 @@ final class ShopifyAdapter implements SourceAdapter
      * No HTML scraping, no per-product requests. Utility collections
      * ('Startseite' etc.) are excluded via a small merchant-local blocklist.
      *
+     * Failure semantics (fail closed): enrichment is OPTIONAL for the
+     * product import, but it must never LOOK successful while broken and
+     * never wipe known-good persisted memberships. Therefore:
+     *   - discovery (/collections.json) failed or unparsable  -> null
+     *   - any single collection fetch/parse failed            -> null
+     *     (a partial map could silently drop collections from the failed
+     *     ones on the next replace, so partial results are not trusted)
+     *   - full success, zero usable collections               -> [] (legit)
+     * Errors inside this method are surfaced as warnings on the result, NOT
+     * swallowed silently and NOT counted as import errors (the catalogue
+     * itself is intact).
+     *
      * @param list<NormalizedProduct> $products
-     * @return array{0: array<string, list<string>>, 1: int} memberships + requests
+     * @return array{0: array<string, list<string>>|null, 1: int, 2: list<string>} memberships|null + requests + warnings
      */
     private function fetchCollectionMemberships(string $origin, array $products): array
     {
         $requests = 0;
+        $warnings = [];
+        // Map product handle -> external_id. Delimiter '~' because the
+        // pattern itself needs '#' inside the character class; an unescaped
+        // '#' with '#' as delimiter truncates the pattern ("Unknown
+        // modifier ']'"). The tail anchor tolerates an optional query part.
         $byShopifyId = [];
         foreach ($products as $p) {
-            if (preg_match('#/products/([^/?#]+)$#', $p->canonicalUrl, $m)) {
-                $byShopifyId[$m[1]] = $p->externalId;
+            if (!preg_match('~/products/([^/?#]+)(?:[?#].*)?$~', $p->canonicalUrl, $m)) {
+                $warnings[] = 'product canonical URL without handle tail: ' . $p->externalId;
+                continue;
             }
+            $byShopifyId[$m[1]] = $p->externalId;
         }
 
         try {
@@ -178,7 +200,10 @@ final class ShopifyAdapter implements SourceAdapter
             $requests++;
             $decoded = json_decode($response['body'], true, 64);
             if (!is_array($decoded) || !isset($decoded['collections']) || !is_array($decoded['collections'])) {
-                return [[], $requests]; // collection enrichment is optional
+                // Discovery unusable — do NOT claim an authoritative (empty)
+                // membership set.
+                $warnings[] = 'collection discovery failed: invalid /collections.json response';
+                return [null, $requests, $warnings];
             }
 
             // Merchant-local noise blocklist (utility/homepage collections).
@@ -187,10 +212,14 @@ final class ShopifyAdapter implements SourceAdapter
             $memberships = [];
             foreach ($decoded['collections'] as $collection) {
                 if (!is_array($collection) || !isset($collection['handle'], $collection['title'])) {
+                    $warnings[] = 'collection entry without handle/title skipped';
                     continue;
                 }
                 $title = trim((string) $collection['title']);
-                if ($title === '' || in_array(mb_strtolower($title, 'UTF-8'), $blockedTitles, true)) {
+                $titleKey = function_exists('mb_strtolower')
+                    ? mb_strtolower($title, 'UTF-8')
+                    : strtolower($title); // mbstring-free fallback (blocklist is ASCII)
+                if ($title === '' || in_array($titleKey, $blockedTitles, true)) {
                     continue;
                 }
                 $handle = (string) $collection['handle'];
@@ -202,7 +231,11 @@ final class ShopifyAdapter implements SourceAdapter
                     $requests++;
                     $colData = json_decode($colResponse['body'], true, 64);
                     if (!is_array($colData) || !isset($colData['products']) || !is_array($colData['products'])) {
-                        continue;
+                        // One broken collection poisons completeness: a
+                        // replace with this map could drop memberships of
+                        // that collection. Fail closed.
+                        $warnings[] = 'collection fetch/parse failed: ' . $handle;
+                        return [null, $requests, $warnings];
                     }
                     foreach ($colData['products'] as $product) {
                         $handleOfProduct = isset($product['handle']) ? (string) $product['handle'] : '';
@@ -212,18 +245,20 @@ final class ShopifyAdapter implements SourceAdapter
                         $externalId = $byShopifyId[$handleOfProduct];
                         $memberships[$externalId][] = $title;
                     }
-                } catch (\Throwable) {
-                    continue; // a single collection failing never breaks the import
+                } catch (\Throwable $e) {
+                    $warnings[] = 'collection fetch failed: ' . $handle . ' (' . $e->getMessage() . ')';
+                    return [null, $requests, $warnings];
                 }
             }
 
             foreach ($memberships as $k => $v) {
                 $memberships[$k] = array_values(array_unique($v));
             }
-            return [$memberships, $requests];
-        } catch (\Throwable) {
-            // Membership enrichment is optional — catalogue stays intact.
-            return [[], $requests];
+            return [$memberships, $requests, $warnings];
+        } catch (\Throwable $e) {
+            // Discovery/transport failure — fail closed, keep old data.
+            $warnings[] = 'collection discovery failed: ' . $e->getMessage();
+            return [null, $requests, $warnings];
         }
     }
 

@@ -110,3 +110,24 @@ no deploy automation.
 
 No analytics, no tracking, no ads, no cookies beyond the technically necessary
 CSRF token session, no external fonts/CDNs/JS libraries. All assets local.
+
+## MariaDB integration tests (collection memberships)
+
+The SQLite suites stay the fast default. Production-relevant database
+semantics (MariaDB 10.11, utf8mb4, real InnoDB) are covered by an
+additional integration suite:
+
+    source ~/.config/versandkostenretter/test-db.env
+    /usr/bin/php8.3 tests/import/run_membership_mariadb_tests.php
+
+Notes for future agents:
+
+- Credentials come from ~/.config/versandkostenretter/test-db.env
+  (VSKR_TEST_DB_DSN / VSKR_TEST_DB_USER / VSKR_TEST_DB_PASSWORD). They are
+  NOT in the repository and must NEVER be committed or printed.
+- Use /usr/bin/php8.3 for this suite: it is the only PHP on this host with
+  PDO + pdo_mysql. The static ~/.local/bin/php build has NO PDO.
+- The `versandkostenretter_test` database is disposable: the suite drops and
+  recreates all VSKR_ tables from database/schema.sql on every run.
+- The suite SKIPs cleanly when VSKR_TEST_DB_* is unset, so ordinary
+  development without MariaDB keeps working.
