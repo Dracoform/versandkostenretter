@@ -73,33 +73,28 @@ main {
   border-radius: .25rem;
 }
 
-/* --- header / brand ------------------------------------------------------- */
+/* --- header / brand -------------------------------------------------------
+   The transparent wordmark sits directly on the light page background:
+   no colored header band, no pill/card behind the artwork. */
 .site-header {
-  background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
-  padding: .9rem 1rem;
-  box-shadow: var(--shadow);
+  padding: 1.75rem 1rem 0;
+  background: none;
+  box-shadow: none;
 }
 .brand {
-  max-width: 44rem;
   margin: 0 auto;
   display: flex;
   justify-content: center;
 }
 .brand-wordmark {
   /* Responsive scaling from the 2172x724 source: never resampled in the
-     file, only displayed smaller. Centered, capped at ~420px on desktop,
-     90% viewport width on mobile; height auto preserves the aspect ratio.
-     The white pill keeps the mid-grey artwork legible on the teal header
-     (display-only; the asset itself is untouched). */
+     file, only displayed smaller. Desktop cap ~620px, mobile ~90vw;
+     height auto preserves the aspect ratio. */
   display: block;
   width: auto;
   height: auto;
-  max-width: min(420px, 90%);
-  max-height: 88px;
+  max-width: min(620px, 90%);
   object-fit: contain;
-  background: #fff;
-  border-radius: .75rem;
-  padding: .55rem 1rem;
 }
 
 /* --- hero ------------------------------------------------------------------ */
