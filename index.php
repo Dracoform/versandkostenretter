@@ -305,10 +305,14 @@ function vskr_render_results(array $config, int $maxResults): void
             $expanded = isset($_GET['expanded']) && $_GET['expanded'] === '1';
             $maxPriceCents = $expanded ? null : $missing + 200;
 
-            // Categories must come from the FULL eligible set (not just the
-            // current page), otherwise the dropdown misses categories whose
-            // cheapest products fall outside the default price window.
-            $categories = $productRepo->distinctCategories($shop['id']);
+            // Dropdown-/Resolve-Basis: ALLE wählbaren Kategorien des Shops —
+            // die VSKR_products.category-Spalte UND die Membership-Tabelle.
+            // Ohne den Membership-Anteil resolve()t die Frontend-Auswahl
+            // Collection-Kategorien zu null und der Filter fällt still auf
+            // "Alle" zurück (Production-Bug).
+            $memberships = $importRepo->categoryMemberships((int) $shop['id']);
+            if ($memberships === []) { $memberships = null; } // no membership data -> single-column filtering
+            $categories = $productRepo->distinctCategories((int) $shop['id'], $memberships);
 
             // Case-insensitive matching against the stored categories —
             // fixes the production bug where the dropdown value's casing
@@ -320,8 +324,6 @@ function vskr_render_results(array $config, int $maxResults): void
 
             // Many-to-many memberships: the requested category may map to a
             // stored value carried by products via the membership table.
-            $memberships = $importRepo->categoryMemberships((int) $shop['id']);
-            if ($memberships === []) { $memberships = null; } // no membership data -> single-column filtering
 
             $products = $productRepo->eligibleProducts(
                 $shop['id'], $missing, $maxResults, $selectedCategory, $maxPriceCents, $memberships

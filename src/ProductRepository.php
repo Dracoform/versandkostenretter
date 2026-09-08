@@ -62,10 +62,17 @@ final class ProductRepository
             ));
             // Membership-aware: a product matches when it carries the
             // category via the single column OR via any stored collection.
+            // Eigene Platzhalternamen im Subquery: MySQL native prepares
+            // (ATTR_EMULATE_PREPARES = false) erlauben keinen named
+            // Placeholder zweimal im Statement.
+            $subPlaceholders = implode(',', array_map(
+                static fn (int $i): string => ':mcat' . $i,
+                array_keys($variants)
+            ));
             $sql .= " AND (category IN ($placeholders)
                      OR external_id IN (
                         SELECT external_id FROM VSKR_product_categories
-                         WHERE shop_id = :shop_id_mc AND category IN ($placeholders)
+                         WHERE shop_id = :shop_id_mc AND category IN ($subPlaceholders)
                      ))";
             $catBind = $variants;
         } elseif ($category !== null) {
@@ -82,6 +89,7 @@ final class ProductRepository
         if ($category !== null && $categoryMemberships !== null) {
             foreach ($catBind as $i => $v) {
                 $stmt->bindValue(':cat' . $i, $v);
+                $stmt->bindValue(':mcat' . $i, $v);
             }
             $stmt->bindValue(':shop_id_mc', $shopId, PDO::PARAM_INT);
         } elseif ($category !== null) {
@@ -145,22 +153,27 @@ final class ProductRepository
      */
     public function distinctCategories(int $shopId, ?array $categoryMemberships = null): array
     {
+        // Zwei separate named Parameter: MySQL native prepares (PDO
+        // ATTR_EMULATE_PREPARES = false) erlauben denselben named Placeholder
+        // nicht zweimal in einer Query.
         $sql = "SELECT DISTINCT category FROM VSKR_products
-                WHERE shop_id = :shop_id AND available = 1
+                WHERE shop_id = :shop_id1 AND available = 1
                   AND category IS NOT NULL AND category <> ''";
-        $bind = [];
         if ($categoryMemberships !== null && $categoryMemberships !== []) {
             $sql .= " UNION
                    SELECT DISTINCT pc.category
                      FROM VSKR_product_categories pc
                      JOIN VSKR_products p
                        ON p.shop_id = pc.shop_id AND p.external_id = pc.external_id
-                    WHERE pc.shop_id = :shop_id AND p.available = 1";
+                    WHERE pc.shop_id = :shop_id2 AND p.available = 1";
         }
         $sql .= ' ORDER BY category ASC';
 
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->bindValue(':shop_id', $shopId, PDO::PARAM_INT);
+        $stmt->bindValue(':shop_id1', $shopId, PDO::PARAM_INT);
+        if ($categoryMemberships !== null && $categoryMemberships !== []) {
+            $stmt->bindValue(':shop_id2', $shopId, PDO::PARAM_INT);
+        }
         $stmt->execute();
 
         return array_values(array_unique(array_map(
