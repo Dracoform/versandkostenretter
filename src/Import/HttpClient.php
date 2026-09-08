@@ -43,7 +43,8 @@ final class HttpClient implements SourceFetcher
      */
     public function get(string $url): array
     {
-        if (!preg_match('#^https://#i', $url)) {
+        $isLoopbackHttp = (bool) preg_match('#^http://(127\.0\.0\.1|localhost)(:\d+)?(/|$)#i', $url);
+        if (!$isLoopbackHttp && !preg_match('#^https://#i', $url)) {
             throw new SourceException('Only https:// URLs are allowed.');
         }
         if (str_contains($url, "\r") || str_contains($url, "\n")) {
@@ -88,12 +89,22 @@ final class HttpClient implements SourceFetcher
     }
 
     /**
-     * Backoff-Sekunden für einen transienten Status: Retry-After (falls
-     * parsebar, auf 1..30s geklemmt), sonst 1s/2s/4s exponentiell.
+   /**
+     * Retry-After aus der Response extrahieren: sekunden-basiert (nicht
+     * HTTP-Datum), parsebar, auf 1..30s geklemmt; sonst null.
      *
      * @param array{code:int, headers:array<string,string>} $response
      */
-    /** @return array{code:int, body:string, content_type:string, url:string, headers:array<string,string>} */
+    private function retryAfterOf(array $response): ?int
+    {
+        $ra = $response['headers']['retry-after'] ?? null;
+        if (is_string($ra) && preg_match('/^\s*\d+\s*$/', $ra)) {
+            return max(1, min(30, (int) $ra));
+        }
+        return null;
+    }
+
+/** @return array{code:int, body:string, content_type:string, url:string, headers:array<string,string>} */
     private function singleGet(string $url): array
     {
         $lastError = 'unknown error';
