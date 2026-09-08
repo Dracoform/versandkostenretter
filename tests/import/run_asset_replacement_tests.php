@@ -14,7 +14,7 @@ declare(strict_types=1);
  * Proves:
  *  - the deployed asset file is TRACKED in Git (a production-local replacement
  *    would be wiped by the next Plesk deployment — committing is mandatory)
- *  - the filename is stable (/assets/images/hero-raccoon.jpg)
+ *  - the filename is stable (/assets/images/hero-raccoon.webp)
  *  - the template references it through Assets::url() (mtime version)
  *  - replacing the tracked file under the SAME filename changes the served
  *    versioned URL without renaming files or disabling caching
@@ -36,16 +36,16 @@ $check = function (string $name, bool $ok, string $detail = '') use (&$pass, &$f
 };
 
 $repo = dirname(__DIR__, 2);
-$assetRel = '/assets/images/hero-raccoon.jpg';
+$assetRel = '/assets/images/hero-raccoon.webp';
 $assetAbs = $repo . $assetRel;
 
 /* =============================================================
  * 1. Repository state: tracked, stable filename, template wiring
  * ============================================================= */
 $check('asset file exists in the repository', is_file($assetAbs));
-$check('asset is a JPEG (image/jpeg)', str_contains(
+$check('asset is a WebP (image/webp)', str_contains(
     (string) shell_exec('file -b --mime-type ' . escapeshellarg($assetAbs) . ' 2>/dev/null'),
-    'image/jpeg'));
+    'image/webp'));
 
 $tracked = trim((string) shell_exec(
     'cd ' . escapeshellarg($repo) . ' && git ls-files ' . escapeshellarg(ltrim($assetRel, '/'))
@@ -59,9 +59,9 @@ $check('asset is NOT gitignored', $ignored === '1', "check-ignore exit={$ignored
 
 $homeTpl = (string) file_get_contents($repo . '/templates/home.php');
 $check('template references the stable filename via Assets::url()',
-    str_contains($homeTpl, "Assets::url('/assets/images/hero-raccoon.jpg')"));
+    str_contains($homeTpl, "Assets::url('/assets/images/hero-raccoon.webp')"));
 $check('template does NOT hardcode an unversioned image URL',
-    !str_contains($homeTpl, 'src="/assets/images/hero-raccoon.jpg"'));
+    !str_contains($homeTpl, 'src="/assets/images/hero-raccoon.webp"'));
 
 // Root .htaccess must not deny the assets directory.
 $htaccess = (string) file_get_contents($repo . '/.htaccess');
@@ -94,7 +94,7 @@ clearstatcache(true, $httpdocs . $assetRel);
 $urlAfter = \Versandkostenretter\Assets::url($assetRel);
 $check('same-filename replacement produces a NEW versioned URL', $urlAfter !== $urlBefore,
     "{$urlBefore} -> {$urlAfter}");
-$check('filename unchanged after replacement', pathinfo(parse_url($urlAfter, PHP_URL_PATH), PATHINFO_BASENAME) === 'hero-raccoon.jpg');
+$check('filename unchanged after replacement', pathinfo(parse_url($urlAfter, PHP_URL_PATH), PATHINFO_BASENAME) === 'hero-raccoon.webp');
 $check('replacement is a different file (bytes changed)',
     hash('sha256', $httpdocs . $assetRel) !== hash('sha256', $assetAbs) || filesize($httpdocs . $assetRel) !== filesize($assetAbs));
 

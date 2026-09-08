@@ -25,6 +25,7 @@ if (PHP_SAPI !== 'cli') {
 require dirname(__DIR__) . '/src/Database.php';
 require dirname(__DIR__) . '/src/StatsRepository.php';
 
+use Versandkostenretter\Database;
 use Versandkostenretter\StatsRepository;
 
 $args = array_slice($argv, 1);
@@ -51,8 +52,9 @@ if ($configPath === null) {
     exit(2);
 }
 
+// Open the DB ONCE and reuse the PDO for every statement below.
 try {
-    $repo = new StatsRepository(Database::fromConfigFile($configPath)->pdo());
+    $pdo = Database::fromConfigFile($configPath)->pdo();
 } catch (Throwable $e) {
     fwrite(STDERR, "Error: could not open database connection.\n");
     exit(2);
@@ -61,17 +63,21 @@ try {
 // Aggregate value only. A missing row is reported explicitly so an operator
 // can tell "0 clicks" apart from "table/migration row missing".
 try {
-    $pdo = Database::fromConfigFile($configPath)->pdo();
     $stmt = $pdo->prepare('SELECT stat_value FROM VSKR_stats WHERE stat_key = :key');
     $stmt->execute([':key' => StatsRepository::OUTBOUND_PRODUCT_CLICKS]);
     $row = $stmt->fetchColumn();
+
     if ($row === false) {
         fwrite(STDOUT, "outbound_product_clicks: (row missing — run migration 0005)\n");
     } else {
         fwrite(STDOUT, StatsRepository::OUTBOUND_PRODUCT_CLICKS . ': ' . (int) $row . "\n");
     }
 } catch (Throwable $e) {
-    fwrite(STDERR, "Error: counter could not be read (see application error log).\n");
+    // Privacy-safe: SQLSTATE + short message only, never credentials/DSN.
+    fwrite(STDERR, sprintf(
+        "Error: counter could not be read [%s]. See the application error log.\n",
+        $e instanceof PDOException ? $e->getCode() : 'n/a'
+    ));
     exit(2);
 }
 
