@@ -24,6 +24,7 @@ require dirname(__DIR__) . '/src/Database.php';
 require dirname(__DIR__) . '/src/Import/SourceException.php';
 require dirname(__DIR__) . '/src/Import/SourceFetcher.php';
 require dirname(__DIR__) . '/src/Import/HttpClient.php';
+require dirname(__DIR__) . '/src/Import/RetryingSourceFetcher.php';
 require dirname(__DIR__) . '/src/Import/SourceAdapter.php';
 require dirname(__DIR__) . '/src/Import/SourceFetchResult.php';
 require dirname(__DIR__) . '/src/Import/SourceCapabilities.php';
@@ -38,6 +39,7 @@ require dirname(__DIR__) . '/src/Import/ImportOrchestrator.php';
 use Versandkostenretter\Database;
 use Versandkostenretter\Import\HttpClient;
 use Versandkostenretter\Import\ImportOrchestrator;
+use Versandkostenretter\Import\RetryingSourceFetcher;
 use Versandkostenretter\Import\ShopifyAdapter;
 use Versandkostenretter\Import\SourceAdapterRegistry;
 
@@ -84,7 +86,7 @@ if ($shop === false) {
 }
 
 $orchestrator = new ImportOrchestrator(
-    new SourceAdapterRegistry(new ShopifyAdapter(new HttpClient())),
+    new SourceAdapterRegistry(new ShopifyAdapter(new RetryingSourceFetcher(new HttpClient()))),
     new \Versandkostenretter\Import\ImportRepository($pdo)
 );
 

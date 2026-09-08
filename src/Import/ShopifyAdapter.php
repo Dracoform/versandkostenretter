@@ -227,6 +227,12 @@ final class ShopifyAdapter implements SourceAdapter
                     continue;
                 }
                 try {
+                    // Kleine Drossel zwischen den ~95 Collection-Requests:
+                    // real beobachtet sandte ein Burst ohne Pause nach ~86
+                    // Requests 429/503. 150ms kosten pro vollständigem Lauf
+                    // ~14s und halten die Request-Rate unter der beobachteten
+                    // Shopify-Schwelle.
+                    usleep(150_000);
                     $colResponse = $this->http->get($origin . '/collections/' . rawurlencode($handle) . '/products.json?limit=250');
                     $requests++;
                     $colData = json_decode($colResponse['body'], true, 64);

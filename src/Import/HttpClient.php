@@ -75,16 +75,24 @@ final class HttpClient implements SourceFetcher
                 continue;
             }
 
-            if ($response['code'] >= 500) {
-                throw new SourceException("Server error HTTP {$response['code']} from source.");
+            if ($response['code'] >= 500 || $response['code'] === 429) {
+                // Transient (429/5xx): als Exception mit Status + Retry-After
+                // melden; die Retry-Politik liegt im RetryingSourceFetcher.
+                throw SourceException::http($response['code'], $this->retryAfterOf($response));
             }
             if ($response['code'] !== 200) {
-                throw new SourceException("Unexpected HTTP status {$response['code']} from source.");
+                throw SourceException::http($response['code']);
             }
             return $response;
         }
     }
 
+    /**
+     * Backoff-Sekunden für einen transienten Status: Retry-After (falls
+     * parsebar, auf 1..30s geklemmt), sonst 1s/2s/4s exponentiell.
+     *
+     * @param array{code:int, headers:array<string,string>} $response
+     */
     /** @return array{code:int, body:string, content_type:string, url:string, headers:array<string,string>} */
     private function singleGet(string $url): array
     {
