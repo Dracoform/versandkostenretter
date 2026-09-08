@@ -45,7 +45,7 @@ final class LoggingHttp implements \Versandkostenretter\Import\SourceFetcher
     /** @var array<string,string> */
     public array $bodies = [];
 
-    public function __construct(private \Versandkostenretter\Import\HttpClient $inner) {}
+    public function __construct(private \Versandkostenretter\Import\SourceFetcher $inner) {}
 
     public function get(string $url): array
     {
@@ -56,7 +56,9 @@ final class LoggingHttp implements \Versandkostenretter\Import\SourceFetcher
     }
 }
 
-$http = new LoggingHttp(new Versandkostenretter\Import\HttpClient());
+// Identisch zur Production: HttpClient mit Retry-Decorator (429/5xx,
+// max 3 Versuche, Retry-After respektiert).
+$http = new LoggingHttp(new Versandkostenretter\Import\RetryingSourceFetcher(new Versandkostenretter\Import\HttpClient()));
 $adapter = new ShopifyAdapter($http);
 $shop = [
     'name' => 'Lootforge',
