@@ -83,20 +83,23 @@ main {
   max-width: 44rem;
   margin: 0 auto;
   display: flex;
-  align-items: center;
-  gap: .6rem;
-  color: #fff;
-  text-decoration: none;
-  font-weight: 800;
-  font-size: 1.15rem;
-  letter-spacing: -.01em;
+  justify-content: center;
 }
-.brand-badge {
-  display: inline-flex;
-  align-items: center;
-  background: rgba(255,255,255,.15);
-  border-radius: 50%;
-  padding: .15rem;
+.brand-wordmark {
+  /* Responsive scaling from the 2172x724 source: never resampled in the
+     file, only displayed smaller. Centered, capped at ~420px on desktop,
+     90% viewport width on mobile; height auto preserves the aspect ratio.
+     The white pill keeps the mid-grey artwork legible on the teal header
+     (display-only; the asset itself is untouched). */
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(420px, 90%);
+  max-height: 88px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: .75rem;
+  padding: .55rem 1rem;
 }
 
 /* --- hero ------------------------------------------------------------------ */
