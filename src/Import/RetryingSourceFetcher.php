@@ -39,12 +39,23 @@ final class RetryingSourceFetcher implements SourceFetcher
                 return $this->inner->get($url);
             } catch (SourceException $e) {
                 $status = $e->httpStatus();
-                $transient = $status === 429 || ($status !== null && $status >= 500);
-                if (!$transient || $attempt === $this->maxAttempts) {
-                    throw $e;
+                $is429 = $status === 429;
+                $is5xx = $status !== null && $status >= 500;
+                if (!$is429 && !$is5xx) {
+                    throw $e; // permanente 4xx: kein Retry
+                }
+                if ($attempt === $this->maxAttempts) {
+                    throw $e; // Retries erschöpft -> Fail-Closed oben
                 }
                 $last = $e;
-                $wait = $e->retryAfter() ?? 2 ** ($attempt - 1); // 1s, 2s
+                if ($is429) {
+                    // Rate-Limit: Retry-After respektieren; sonst
+                    // konservativ 5s (1. Retry) / 10s (2. Retry).
+                    $wait = $e->retryAfter() ?? (5 * 2 ** ($attempt - 1));
+                } else {
+                    // 5xx: kurzes Backoff bleibt 1s, 2s.
+                    $wait = 2 ** ($attempt - 1);
+                }
                 ($this->sleep)(max(1, min(30, $wait)));
             }
         }

@@ -59,6 +59,10 @@ switch ($mode) {
         if ($call === 0) { http_response_code(429); echo 'rate limited'; }
         else { echo '{"ok":true}'; }
         return;
+    case '429x2':
+        if ($call < 2) { http_response_code(429); echo 'rate limited'; }
+        else { echo '{"ok":true}'; }
+        return;
     case '503x2then200':
         if ($call < 2) { http_response_code(503); echo 'boom'; }
         else { echo '{"ok":true}'; }
@@ -90,14 +94,14 @@ register_shutdown_function(static function () use ($proc, $script): void {
         proc_terminate($proc);
     }
     @unlink($script);
-    foreach (['429with', '429without', '503x2then200', '503always', '404'] as $m) {
+    foreach (['429with', '429without', '429x2', '503x2then200', '503always', '404'] as $m) {
         @unlink(sys_get_temp_dir() . '/vskr-retry-state-' . $m);
     }
 });
 
 $base = "http://127.0.0.1:{$port}/?mode=%s";
 $urlFor = static fn (string $mode): string => sprintf($base, $mode);
-foreach (['429with', '429without', '503x2then200', '503always', '404'] as $m) {
+foreach (['429with', '429without', '429x2', '503x2then200', '503always', '404'] as $m) {
     @unlink(sys_get_temp_dir() . '/vskr-retry-state-' . $m);
 }
 
@@ -120,7 +124,13 @@ $check('Retry-After=1s aus Header wurde an RetryingSourceFetcher übergeben',
 $GLOBALS['sleeps'] = [];
 $r2 = $mkFetcher()->get($urlFor('429without'));
 $check('429 ohne Retry-After -> Retry -> HTTP 200', $r2['code'] === 200);
-$check('Fallback-Backoff 1s (exponentiell)', $GLOBALS['sleeps'] === [1], json_encode($GLOBALS['sleeps']));
+$check('429 ohne Retry-After: konservatives Backoff 5s', $GLOBALS['sleeps'] === [5], json_encode($GLOBALS['sleeps']));
+
+// 429 x2 -> Retries mit 5s, dann 10s -> Erfolg
+$GLOBALS['sleeps'] = [];
+$r2b = $mkFetcher()->get($urlFor('429x2'));
+$check('429 x2 -> Retry x2 -> HTTP 200', $r2b['code'] === 200);
+$check('429-Backoff 5s, 10s (ohne Retry-After)', $GLOBALS['sleeps'] === [5, 10], json_encode($GLOBALS['sleeps']));
 
 // --- 3. 503 x2 -> Erfolg (5xx-Retry unverändert) ------------------------------
 $GLOBALS['sleeps'] = [];
