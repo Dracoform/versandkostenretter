@@ -95,7 +95,13 @@ require __DIR__ . '/layout_header.php';
       <?php foreach ($results['products'] as $p):
           $effective = \Versandkostenretter\Cart::effectiveExtraCostCents($p['price_cents'], $shop['shipping_cost_cents']);
           // Single outbound-link component: canonical URL in, safe URL out.
-          $link = OutboundLink::build($p['url'], $shop['affiliate']);
+          // Unsafe/invalid merchant URLs throw inside OutboundLink; such
+          // products render without links (never an unsafe href).
+          try {
+              $outboundUrl = OutboundLink::build($p['url'], $shop['affiliate'])['url'];
+          } catch (\Throwable) {
+              $outboundUrl = null;
+          }
           // Links route through the privacy-preserving local outbound
           // endpoint (aggregate click counter); it performs the identical
           // OutboundLink transformation server-side.
