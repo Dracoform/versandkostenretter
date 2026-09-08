@@ -55,8 +55,18 @@ final class StatsRepository
             $stmt->execute([':key' => $key]);
             $value = $stmt->fetchColumn();
             return $value === false ? null : (int) $value;
-        } catch (\Throwable) {
-            return null; // statistics are best-effort, never business-critical
+        } catch (\Throwable $e) {
+            // Statistics are best-effort, never business-critical — but an
+            // invisible counter is undiagnosable, so log the failure class
+            // privacy-safely (SQLSTATE/message, never credentials or data).
+            $sqlState = $e instanceof \PDOException ? $e->getCode() : 'n/a';
+            error_log(sprintf(
+                '[vskr-stats] increment failed for "%s": [%s] %s',
+                $key,
+                $sqlState,
+                $e->getMessage()
+            ));
+            return null;
         }
     }
 

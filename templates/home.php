@@ -43,7 +43,7 @@ require __DIR__ . '/layout_header.php';
     aus <strong>deinem Shop</strong>, mit denen du die Schwelle erreichst.
   </p>
   <figure class="hero-illustration">
-    <img src="/assets/images/hero-raccoon.jpg"
+    <img src="<?= \Versandkostenretter\Assets::url('/assets/images/hero-raccoon.jpg') ?>"
          alt="Maskottchen: Ein Waschbär auf einem Rettungsring zieht einen Einkaufswagen sicher durch die Wellen."
          width="900" height="437" fetchpriority="high" decoding="async">
   </figure>

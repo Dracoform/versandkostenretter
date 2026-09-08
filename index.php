@@ -213,11 +213,12 @@ function vskr_handle_go(string $productId): never
     }
 
     // The click is valid: count it best-effort, then redirect regardless.
-    try {
-        (new \Versandkostenretter\StatsRepository($db->pdo()))
-            ->increment(\Versandkostenretter\StatsRepository::OUTBOUND_PRODUCT_CLICKS);
-    } catch (\Throwable $e) {
-        error_log('[vskr-go] counter increment failed'); // click still proceeds
+    $newCount = (new \Versandkostenretter\StatsRepository($db->pdo()))
+        ->increment(\Versandkostenretter\StatsRepository::OUTBOUND_PRODUCT_CLICKS);
+    if ($newCount === null) {
+        // Privacy-safe diagnostic (no credentials/user data): an operator can
+        // correlate this with bin/stats.php output.
+        error_log('[vskr-go] counter increment failed; click proceeded anyway');
     }
 
     // Aggregate-only redirect: strip cache/robot confusion, set no cookies,
