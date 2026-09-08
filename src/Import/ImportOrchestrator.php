@@ -80,10 +80,22 @@ final class ImportOrchestrator
             // Optional source capability: many-to-many merchant category /
             // collection memberships (delete + replace per shop; stale
             // memberships cannot survive a complete run).
-            if ($fetched->categoryMemberships !== []) {
+            //
+            // null = enrichment unavailable (discovery/fetch/parse failed):
+            // previous memberships are deliberately KEPT (fail closed) —
+            // never replace known-good data with a malfunction's empty set.
+            // array (even empty) = enrichment ran successfully end-to-end
+            // and is the authoritative set; [] is legitimate for shops
+            // without usable collections.
+            if ($fetched->categoryMemberships !== null) {
                 $result['memberships'] = $this->repo->replaceCategoryMemberships(
                     $shopId, $fetched->categoryMemberships
                 );
+            } else {
+                $result['memberships_skipped'] = true;
+                if ($fetched->enrichmentWarnings !== []) {
+                    $result['enrichment_warnings'] = $fetched->enrichmentWarnings;
+                }
             }
         }
 
