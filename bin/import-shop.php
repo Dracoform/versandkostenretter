@@ -32,6 +32,7 @@ use Versandkostenretter\Import\HttpClient;
 use Versandkostenretter\Import\ImportOrchestrator;
 use Versandkostenretter\Import\ImportRepository;
 use Versandkostenretter\Import\NormalizedProduct;
+use Versandkostenretter\Import\RetryingSourceFetcher;
 use Versandkostenretter\Import\ShopifyAdapter;
 use Versandkostenretter\Import\ShopifyMapper;
 use Versandkostenretter\Import\SourceAdapter;
