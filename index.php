@@ -288,6 +288,7 @@ function vskr_render_results(array $config, int $maxResults): void
             $results = ['free_reached' => true, 'products' => []];
         } else {
             $productRepo = new \Versandkostenretter\ProductRepository($db);
+            $importRepo = new \Versandkostenretter\Import\ImportRepository($db->pdo());
 
             // Opportunistic, shop-local category filter (stateless GET param).
             $requestedCategory = isset($_GET['category']) ? trim((string) $_GET['category']) : '';
@@ -297,18 +298,35 @@ function vskr_render_results(array $config, int $maxResults): void
                     : substr($requestedCategory, 0, 190);
             }
 
-            // Unfiltered eligible set defines the available choices.
-            $allProducts = $productRepo->eligibleProducts($shop['id'], $missing, $maxResults);
-            $total = $productRepo->countEligible($shop['id'], $missing);
-            $categories = \Versandkostenretter\CategoryFilter::distinct($allProducts);
+            // Filler-item price window: default mode caps the price at
+            // missing + 2.00 EUR so results actually get the user just over
+            // the threshold; expanded mode ("Mehr Auswahl anzeigen") removes
+            // the cap. Stateless GET param, no cookies/sessions.
+            $expanded = isset($_GET['expanded']) && $_GET['expanded'] === '1';
+            $maxPriceCents = $expanded ? null : $missing + 200;
 
-            if (\Versandkostenretter\CategoryFilter::isUsable($categories, $requestedCategory)) {
-                $selectedCategory = $requestedCategory;
-                $products = $productRepo->eligibleProducts($shop['id'], $missing, $maxResults, $selectedCategory);
-            } else {
-                // Invalid/unknown category: graceful fallback to "Alle".
-                $products = $allProducts;
-            }
+            // Categories must come from the FULL eligible set (not just the
+            // current page), otherwise the dropdown misses categories whose
+            // cheapest products fall outside the default price window.
+            $categories = $productRepo->distinctCategories($shop['id']);
+
+            // Case-insensitive matching against the stored categories —
+            // fixes the production bug where the dropdown value's casing
+            // differed from the stored merchant tag and the filter silently
+            // fell back to "Alle".
+            $selectedCategory = \Versandkostenretter\CategoryFilter::resolve(
+                $categories, $requestedCategory
+            );
+
+            // Many-to-many memberships: the requested category may map to a
+            // stored value carried by products via the membership table.
+            $memberships = $importRepo->categoryMemberships((int) $shop['id']);
+            if ($memberships === []) { $memberships = null; } // no membership data -> single-column filtering
+
+            $products = $productRepo->eligibleProducts(
+                $shop['id'], $missing, $maxResults, $selectedCategory, $maxPriceCents, $memberships
+            );
+            $total = $productRepo->countEligible($shop['id'], $missing, $maxPriceCents);
 
             $results = [
                 'free_reached' => false,

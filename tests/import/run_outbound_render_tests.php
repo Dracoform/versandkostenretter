@@ -124,7 +124,7 @@ $stop = function () use ($proc): void {
     if (is_resource($proc)) { proc_terminate($proc); proc_close($proc); }
 };
 
-$r = vskr_http('/?shop=lootforge&cart=95,34');
+$r = vskr_http('/?shop=lootforge&cart=95,34&expanded=1'); // expanded: link-rendering assertions (default window has no qualifying products in this seed)
 $check('results page 200', $r['status'] === 200, "status={$r['status']}");
 
 /* =============================================================

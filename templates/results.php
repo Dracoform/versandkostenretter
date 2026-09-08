@@ -1,14 +1,19 @@
 <?php
+
 /**
  * Results page.
  *
- * @var array|null $shop            selected shop (id, name, shipping/threshold cents)
+ * @var array|null $shop            selected shop (id, name, slug, shipping/threshold cents, affiliate)
  * @var int|null   $cartCents       current cart value in cents
+ * @var string     $cartRaw         raw cart value as submitted (for stateless forms)
  * @var array      $errors          validation errors
  * @var array|null $results         ['free_reached'=>bool, 'products'=>[], 'total'=>int, 'missing_cents'=>int]
  * @var array      $shops           all active shops (for the form)
  * @var string     $pageTitle
  * @var int        $maxResults
+ * @var array      $categories      distinct categories of the eligible set
+ * @var string|null $selectedCategory
+ * @var bool       $expanded        price-window mode: true = "Mehr Auswahl anzeigen"
  */
 
 use Versandkostenretter\Money;
@@ -66,17 +71,21 @@ require __DIR__ . '/layout_header.php';
   </section>
 <?php elseif ($results !== null && !($results['free_reached'] ?? false)): ?>
   <?php $missing = $results['missing_cents']; ?>
-  <h2 class="results-heading">Passende Produkte ab <?= Money::formatEuro($missing) ?></h2>
+  <h2 class="results-heading">
+    Passende Produkte ab <?= Money::formatEuro($missing) ?>
+    <?= $expanded ? '' : 'bis ' . Money::formatEuro($missing + 200) ?>
+  </h2>
 
   <?php if (!empty($categories)): ?>
     <form method="get" action="/" class="category-filter">
       <input type="hidden" name="shop" value="<?= View::e($shop['slug']) ?>">
       <input type="hidden" name="cart" value="<?= View::e($cartRaw) ?>">
+      <?php if ($expanded): ?><input type="hidden" name="expanded" value="1"><?php endif; ?>
       <label for="category">Kategorie:</label>
       <select id="category" name="category" data-autosubmit="1">
         <option value="">Alle</option>
         <?php foreach ($categories as $cat): ?>
-          <option value="<?= View::e($cat) ?>" <?= $selectedCategory === $cat ? 'selected' : '' ?>>
+          <option value="<?= View::e($cat) ?>" <?= ($selectedCategory ?? null) === $cat ? 'selected' : '' ?>>
             <?= View::e($cat) ?>
           </option>
         <?php endforeach; ?>
@@ -85,10 +94,19 @@ require __DIR__ . '/layout_header.php';
     </form>
   <?php endif; ?>
 
+  <?php // Price-window toggle: stateless GET link, preserves shop/cart/category. ?>
+  <p class="price-mode-toggle">
+    <?php if ($expanded): ?>
+      <a href="/?<?= http_build_query(['shop' => $shop['slug'], 'cart' => $cartRaw, 'category' => $selectedCategory ?? '']) ?>">Nur die günstigsten Füller anzeigen</a>
+    <?php else: ?>
+      <a href="/?<?= http_build_query(['shop' => $shop['slug'], 'cart' => $cartRaw, 'category' => $selectedCategory ?? '', 'expanded' => '1']) ?>">Mehr Auswahl anzeigen</a>
+    <?php endif; ?>
+  </p>
+
   <?php if ($results['products'] === []): ?>
     <section class="notice">
       <p>Aktuell keine passenden Produkte gefunden.
-         Versuche einen anderen Warenkorbwert oder schau später wieder vorbei.</p>
+         Versuche es mit „Mehr Auswahl anzeigen“ oder schau später wieder vorbei.</p>
     </section>
   <?php else: ?>
     <ul class="product-list">

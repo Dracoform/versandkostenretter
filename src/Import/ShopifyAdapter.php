@@ -133,7 +133,15 @@ final class ShopifyAdapter implements SourceAdapter
             // End of catalogue: short page (< limit) or empty page.
             $rawCount = count(is_array($decoded['products']) ? $decoded['products'] : []);
             if ($rawCount < 250) {
-                return new SourceFetchResult($normalized, $skipped, complete: true, requests: $requests);
+                // Catalogue complete. Enrich with merchant COLLECTION
+                // membership (a product may belong to several collections —
+                // never collapse to one).
+                [$memberships, $membershipRequests] = $this->fetchCollectionMemberships($origin, $normalized);
+                return new SourceFetchResult(
+                    $normalized, $skipped, complete: true,
+                    requests: $requests + $membershipRequests,
+                    categoryMemberships: $memberships
+                );
             }
 
             $page++;
@@ -143,6 +151,80 @@ final class ShopifyAdapter implements SourceAdapter
         throw SourceException::because(
             'Pagination exceeded the safety limit of ' . $maxPages . ' pages; catalogue treated as incomplete.'
         );
+    }
+
+    /**
+     * Merchant collections via public structured endpoints:
+     *   GET /collections.json?limit=250        (all collections, 1 request)
+     *   GET /collections/<handle>/products.json (membership per collection)
+     * No HTML scraping, no per-product requests. Utility collections
+     * ('Startseite' etc.) are excluded via a small merchant-local blocklist.
+     *
+     * @param list<NormalizedProduct> $products
+     * @return array{0: array<string, list<string>>, 1: int} memberships + requests
+     */
+    private function fetchCollectionMemberships(string $origin, array $products): array
+    {
+        $requests = 0;
+        $byShopifyId = [];
+        foreach ($products as $p) {
+            if (preg_match('#/products/([^/?#]+)$#', $p->canonicalUrl, $m)) {
+                $byShopifyId[$m[1]] = $p->externalId;
+            }
+        }
+
+        try {
+            $response = $this->http->get($origin . '/collections.json?limit=250');
+            $requests++;
+            $decoded = json_decode($response['body'], true, 64);
+            if (!is_array($decoded) || !isset($decoded['collections']) || !is_array($decoded['collections'])) {
+                return [[], $requests]; // collection enrichment is optional
+            }
+
+            // Merchant-local noise blocklist (utility/homepage collections).
+            $blockedTitles = ['startseite', 'homepage', 'frontpage', 'all', 'products'];
+
+            $memberships = [];
+            foreach ($decoded['collections'] as $collection) {
+                if (!is_array($collection) || !isset($collection['handle'], $collection['title'])) {
+                    continue;
+                }
+                $title = trim((string) $collection['title']);
+                if ($title === '' || in_array(mb_strtolower($title, 'UTF-8'), $blockedTitles, true)) {
+                    continue;
+                }
+                $handle = (string) $collection['handle'];
+                if ($handle === '' || preg_match('#^https?://#i', $handle)) {
+                    continue;
+                }
+                try {
+                    $colResponse = $this->http->get($origin . '/collections/' . rawurlencode($handle) . '/products.json?limit=250');
+                    $requests++;
+                    $colData = json_decode($colResponse['body'], true, 64);
+                    if (!is_array($colData) || !isset($colData['products']) || !is_array($colData['products'])) {
+                        continue;
+                    }
+                    foreach ($colData['products'] as $product) {
+                        $handleOfProduct = isset($product['handle']) ? (string) $product['handle'] : '';
+                        if ($handleOfProduct === '' || !isset($byShopifyId[$handleOfProduct])) {
+                            continue;
+                        }
+                        $externalId = $byShopifyId[$handleOfProduct];
+                        $memberships[$externalId][] = $title;
+                    }
+                } catch (\Throwable) {
+                    continue; // a single collection failing never breaks the import
+                }
+            }
+
+            foreach ($memberships as $k => $v) {
+                $memberships[$k] = array_values(array_unique($v));
+            }
+            return [$memberships, $requests];
+        } catch (\Throwable) {
+            // Membership enrichment is optional — catalogue stays intact.
+            return [[], $requests];
+        }
     }
 
     /** @return array{0:array<string,mixed>,1:string} decoded body + content type */

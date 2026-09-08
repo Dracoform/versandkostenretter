@@ -87,3 +87,13 @@ CREATE TABLE IF NOT EXISTS VSKR_stats (
 
 -- Seed (idempotent):
 -- INSERT IGNORE INTO VSKR_stats (stat_key, stat_value) VALUES ('outbound_product_clicks', 0);
+
+CREATE TABLE IF NOT EXISTS VSKR_product_categories (
+    shop_id     INT UNSIGNED NOT NULL,
+    external_id VARCHAR(190) NOT NULL,
+    category    VARCHAR(190) NOT NULL,
+    PRIMARY KEY (shop_id, external_id, category),
+    CONSTRAINT fk_vskr_pc_shop
+        FOREIGN KEY (shop_id) REFERENCES VSKR_shops (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Many-to-many product <-> merchant category/collection membership';

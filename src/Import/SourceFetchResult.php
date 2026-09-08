@@ -18,12 +18,16 @@ final class SourceFetchResult
      *                       validated successfully (never true after a
      *                       partial/paginated failure)
      * @param int $requests number of HTTP requests made (observability)
+     * @param array<string, list<string>> $categoryMemberships
+     *        external_id => merchant categories/collections (optional;
+     *        only sources exposing collection membership provide this)
      */
     public function __construct(
         public readonly array $products,
         public readonly array $skipped,
         public readonly bool $complete,
         public readonly int $requests = 0,
+        public readonly array $categoryMemberships = [],
     ) {
     }
 }
