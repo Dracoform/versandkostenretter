@@ -353,6 +353,9 @@ main {
   font-style: italic;
 }
 
+.legal-stand { margin-top: 2rem; color: var(--ink-soft); font-size: .85rem; }
+.static-page a { color: var(--teal-700); }
+
 /* --- footer -------------------------------------------------------------------------- */
 .site-footer {
   background: var(--teal-900);
