@@ -151,7 +151,7 @@ if (($shop['source_type'] ?? null) === null || ($shop['source_url'] ?? null) ===
 
 // ---------------------------------------------------------------- run
 $registry = new SourceAdapterRegistry(
-    new ShopifyAdapter(new HttpClient())
+    new ShopifyAdapter(new RetryingSourceFetcher(new HttpClient()))
 );
 $repo = new ImportRepository($pdo);
 $orchestrator = new ImportOrchestrator($registry, $repo);
@@ -207,6 +207,28 @@ foreach ($result['skipped_items'] as $s) {
 }
 if (!$dryRun && ($result['unavailable'] ?? 0) > 0) {
     fwrite(STDOUT, "  note: {$result['unavailable']} product(s) absent from this COMPLETE source run were marked unavailable.\n");
+}
+
+// Membership-Enrichment: Zustand UNÜBERSEHBAR ausgeben. Ein Fail-Closed-Skip
+// ist kein Import-Fehler (Errors bleibt korrekt 0), muss aber für den
+// Operator sichtbar sein.
+if (!$dryRun && array_key_exists('complete', $result) && $result['complete']) {
+    if (isset($result['memberships'])) {
+        fwrite(STDOUT, "Memberships: {$result['memberships']} rows synced (OK)\n");
+    } elseif (!empty($result['memberships_skipped'])) {
+        fwrite(STDOUT, "Membership sync: SKIPPED — collection enrichment failed; previously persisted memberships were KEPT.\n");
+        $warnings = $result['enrichment_warnings'] ?? [];
+        fwrite(STDOUT, 'Enrichment warnings: ' . count($warnings) . "\n");
+        foreach (array_slice($warnings, 0, 5) as $w) {
+            fwrite(STDOUT, "  - {$w}\n");
+        }
+        if (count($warnings) > 5) {
+            fwrite(STDOUT, '  ... and ' . (count($warnings) - 5) . " more\n");
+        }
+    } else {
+        // Quellen ohne Collection-Support (z. B. ältere Adapter): kein Zustand.
+        fwrite(STDOUT, "Membership sync: not applicable for this source\n");
+    }
 }
 
 exit(EXIT_OK);
