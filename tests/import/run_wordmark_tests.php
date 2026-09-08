@@ -137,12 +137,17 @@ $check('large hero artwork unchanged (still referenced and present)',
 
 // Responsive CSS, no fixed overflowing width:
 $css = (string) file_get_contents($httpdocs . '/assets/css/main.css');
-$check('wordmark CSS scales responsively (max-width min(420px, 90%))',
-    str_contains($css, 'max-width: min(420px, 90%)'));
+$check('wordmark CSS scales responsively (desktop cap 620px, mobile 90vw)',
+    str_contains($css, 'max-width: min(620px, 90%)'));
 $check('wordmark height is auto', str_contains($css, 'height: auto'));
 $check('wordmark keeps aspect ratio via object-fit: contain',
     str_contains($css, 'object-fit: contain'));
-$check('no fixed pixel width on the wordmark', !preg_match('/\.brand-wordmark\s*{[^}]*width:\s*\d+px/', $css));
+$check('no teal/green header band behind the wordmark',
+    !preg_match('#\.site-header\s*{[^}]*background:\s*linear-gradient#i', $css)
+    && !preg_match('#\.site-header\s*{[^}]*background:\s*(var\(--teal|#[0-9a-f]{3,6})#i', $css));
+$check('no white pill/background around the wordmark',
+    !preg_match('#\.brand-wordmark\s*{[^}]*background#i', $css));
+$check('old small raccoon remains absent from homepage', !str_contains($home['body'], 'hero-mascot'));
 $check('wordmark centered in header', str_contains($css, 'justify-content: center'));
 
 // Mobile layout intact (small width does not overflow):
