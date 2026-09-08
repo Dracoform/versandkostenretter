@@ -141,7 +141,17 @@ final class ImportRepository
                 $n = $stmt->rowCount();
             }
 
-            $this->pdo->exec('DROP TABLE IF EXISTS VSKR_tmp_seen');
+            // ROOT CAUSE of the production failure: a plain
+            // 'DROP TABLE IF EXISTS VSKR_tmp_seen' causes an IMPLICIT COMMIT
+            // in MySQL/MariaDB even when the table is temporary. That
+            // silently committed the whole import (stale UPDATE included)
+            // and made the subsequent commit() throw
+            // 'There is no active transaction'. 'DROP TEMPORARY TABLE' is
+            // the documented exception that preserves the transaction.
+            // SQLite has no implicit-commit DDL and keeps 'DROP TABLE'.
+            $this->pdo->exec($isSqlite
+                ? 'DROP TABLE IF EXISTS VSKR_tmp_seen'
+                : 'DROP TEMPORARY TABLE IF EXISTS VSKR_tmp_seen');
             $this->pdo->commit();
             return $n;
         } catch (\Throwable $e) {
