@@ -99,13 +99,31 @@ final class ImportRepository
      * present in $seenExternalIds as UNAVAILABLE (available = 0). Complete-
      * source-scope only; never after a partial/failed run; never deletes.
      *
+     * Set-based anti-join via a TEMPORARY table of seen ids: a chunked
+     * NOT IN over multiple UPDATE statements over-marks (an id present in
+     * chunk A but absent from chunk B gets flipped by B — the production bug
+     * that flipped 749 freshly imported rows).
+     *
      * @param list<string> $seenExternalIds
      */
     public function markStaleUnavailable(int $shopId, string $sourceType, string $sourceScope, array $seenExternalIds): int
     {
         $this->pdo->beginTransaction();
         try {
+            $this->pdo->exec('CREATE TEMPORARY TABLE VSKR_tmp_seen (
+                external_id VARCHAR(190) NOT NULL PRIMARY KEY
+            )');
+            $isSqlite = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite';
+            $ins = $this->pdo->prepare($isSqlite
+                ? 'INSERT OR IGNORE INTO VSKR_tmp_seen (external_id) VALUES (?)'
+                : 'INSERT IGNORE INTO VSKR_tmp_seen (external_id) VALUES (?)');
+            foreach ($seenExternalIds as $eid) {
+                $ins->execute([$eid]);
+            }
+
             if ($seenExternalIds === []) {
+                // Complete feed genuinely empty: everything from this source
+                // scope goes unavailable (explicit, never via a failure path).
                 $stmt = $this->pdo->prepare(
                     'UPDATE VSKR_products SET available = 0
                      WHERE shop_id = :sid AND source_type = :st AND source_scope = :sc AND available = 1'
@@ -113,28 +131,17 @@ final class ImportRepository
                 $stmt->execute([':sid' => $shopId, ':st' => $sourceType, ':sc' => $sourceScope]);
                 $n = $stmt->rowCount();
             } else {
-                $chunks = array_chunk(array_values($seenExternalIds), 500);
-                $n = 0;
-                foreach ($chunks as $chunk) {
-                    $placeholders = implode(',', array_map(
-                        static fn ($i): string => ':e' . $i,
-                        array_keys($chunk)
-                    ));
-                    $stmt = $this->pdo->prepare(
-                        "UPDATE VSKR_products SET available = 0
-                         WHERE shop_id = :sid AND source_type = :st AND source_scope = :sc
-                           AND available = 1 AND external_id NOT IN ({$placeholders})"
-                    );
-                    $stmt->bindValue(':sid', $shopId, PDO::PARAM_INT);
-                    $stmt->bindValue(':st', $sourceType);
-                    $stmt->bindValue(':sc', $sourceScope);
-                    foreach ($chunk as $i => $eid) {
-                        $stmt->bindValue(':e' . $i, $eid);
-                    }
-                    $stmt->execute();
-                    $n += $stmt->rowCount();
-                }
+                $stmt = $this->pdo->prepare(
+                    'UPDATE VSKR_products SET available = 0
+                     WHERE shop_id = :sid AND source_type = :st AND source_scope = :sc
+                       AND available = 1
+                       AND external_id NOT IN (SELECT external_id FROM VSKR_tmp_seen)'
+                );
+                $stmt->execute([':sid' => $shopId, ':st' => $sourceType, ':sc' => $sourceScope]);
+                $n = $stmt->rowCount();
             }
+
+            $this->pdo->exec('DROP TABLE IF EXISTS VSKR_tmp_seen');
             $this->pdo->commit();
             return $n;
         } catch (\Throwable $e) {
