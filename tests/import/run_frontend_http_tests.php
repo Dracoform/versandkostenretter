@@ -149,5 +149,47 @@ $check('F) keine Set-Cookie-Header (Results + expanded)',
 $check('Default-Fenster: EC3 (9,99) ausgeschlossen', !in_array('EC3', $ids($rE['body']), true),
     json_encode($ids($rE['body'])));
 
+// === Pagination (25 in-window Produkte -> 3 Seiten) ==========================
+$check('P) Ergebnistext: "25 passende Produkte gefunden – Seite 1 von 3"',
+    (bool) str_contains($rE['body'], '25 passende Produkte gefunden – Seite 1 von 3'));
+$rP2 = $http($base . '/?shop=lootforge&cart=95&page=2');
+$check('P) page=2 -> Seite 2 von 3', (bool) str_contains($rP2['body'], 'Seite 2 von 3'));
+$check('P) page=2 -> aktuelle Seitenzahl markiert (aria-current)', (bool) preg_match('#pagination-current" aria-current="page">2<#', $rP2['body']));
+$idsP2 = $ids($rP2['body']);
+$check('P) page=2 -> 10 andere Produkte als Seite 1',
+    count($idsP2) === 10 && count(array_intersect($idsP2, $ids($rE['body']))) === 0,
+    json_encode($idsP2));
+$rP3 = $http($base . '/?shop=lootforge&cart=95&page=3');
+$check('P) page=3 -> 5 Produkte (letzte Seite)', count($ids($rP3['body'])) === 5);
+$rP999 = $http($base . '/?shop=lootforge&cart=95&page=999');
+$check('P) page=999 -> geclampt auf letzte Seite (Seite 3 von 3)',
+    (bool) str_contains($rP999['body'], 'Seite 3 von 3'));
+$rPabc = $http($base . '/?shop=lootforge&cart=95&page=abc');
+$check('P) page=abc -> Seite 1', (bool) str_contains($rPabc['body'], 'Seite 1 von 3'));
+$rP0 = $http($base . '/?shop=lootforge&cart=95&page=0');
+$check('P) page=0 -> Seite 1', (bool) str_contains($rP0['body'], 'Seite 1 von 3'));
+
+// Seitenlinks erhalten State (category/expanded):
+$rPC = $http($base . "/?shop=lootforge&cart=95&category=" . rawurlencode("Emperor's Children") . '&expanded=1&page=1');
+// nur 3 EC-Produkte -> keine Pagination; stattdessen Filler Category + expanded:
+$rPF = $http($base . '/?shop=lootforge&cart=95&category=Filler+Category&expanded=1&page=2');
+$check('P) category+expanded+page=2: Ergebnis-Seite 2',
+    (bool) str_contains($rPF['body'], 'Seite 2 von') || (bool) preg_match('#pagination-current">2#', $rPF['body']));
+$check('P) Seitenlink enthält category und expanded',
+    (bool) preg_match('#href="/\?shop=lootforge&cart=95&page=[12]&category=Filler\+Category&expanded=1"#', $rPF['body']),
+    'Link-State unvollständig');
+
+// Kategorie-Dropdown dynamisch: nur Kategorien mit Treffern im aktuellen Modus
+$opts = static function (string $body): array {
+    preg_match_all('#<option value="([^"]*)"#', $body, $m);
+    return array_filter($m[1], static fn ($v) => $v !== '');
+};
+$optsStrict = $opts($rE['body']);
+$check('DYN) Strict: nur Kategorien mit Treffern im Dropdown (4: EC, Filler, Soulblight, Warpaints)',
+    count($optsStrict) === 4 && !in_array('Unused Category 04', $optsStrict, true),
+    json_encode(array_values($optsStrict)));
+$check('DYN) Keine "Unused"-Kategorien im Strict-Dropdown',
+    !(bool) preg_match('#Unused Category#', $rE['body']));
+
 echo "\nFrontend tests: {$checks} passed, {$failed} failed\n";
 exit($failed === 0 ? 0 : 1);

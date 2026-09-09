@@ -126,13 +126,17 @@ if (str_starts_with($goUri, '/go/')) {
 
 $route = isset($_GET['page']) ? (string) $_GET['page'] : '';
 
-match ($route) {
-    ''             => vskr_handle_home($config, $maxResults),
-    'impressum'    => vskr_render_static('impressum'),
-    'datenschutz'  => vskr_render_static('datenschutz'),
-    'projekt'      => vskr_render_static('projekt'),
-    'health'       => vskr_health($config),
-    default        => vskr_render_404(),
+match (true) {
+    $route === ''              => vskr_handle_home($config, $maxResults),
+    $route === 'impressum'     => vskr_render_static('impressum'),
+    $route === 'datenschutz'   => vskr_render_static('datenschutz'),
+    $route === 'projekt'       => vskr_render_static('projekt'),
+    $route === 'health'        => vskr_health($config),
+    // Pagination: ?page=2 gehoert zur Ergebnis-URL (numerisch = Seitenzahl).
+    // Nicht-numerische page-Werte mit shop/cart fallen sicher auf Seite 1
+    // (Clamping in vskr_render_results); statische Seiten bleiben textuell.
+    $route !== '' && (isset($_GET['shop']) || isset($_GET['cart'])) => vskr_handle_home($config, $maxResults),
+    default                    => vskr_render_404(),
 };
 
 // ---------------------------------------------------------------
@@ -312,7 +316,12 @@ function vskr_render_results(array $config, int $maxResults): void
             // "Alle" zurück (Production-Bug).
             $memberships = $importRepo->categoryMemberships((int) $shop['id']);
             if ($memberships === []) { $memberships = null; } // no membership data -> single-column filtering
-            $categories = $productRepo->distinctCategories((int) $shop['id'], $memberships);
+            // Kategorie-SICHTBARKEIT folgt dem aktuellen Preis-Modus (Strict/
+            // Expanded): nur Kategorien mit mindestens einem eligible Produkt.
+            // Die vollstaendige Taxonomie bleibt in der DB unveraendert.
+            $categories = $productRepo->visibleCategories(
+                (int) $shop['id'], $missing, $maxPriceCents, $memberships
+            );
 
             // Case-insensitive matching against the stored categories —
             // fixes the production bug where the dropdown value's casing
@@ -325,16 +334,27 @@ function vskr_render_results(array $config, int $maxResults): void
             // Many-to-many memberships: the requested category may map to a
             // stored value carried by products via the membership table.
 
-            $products = $productRepo->eligibleProducts(
-                $shop['id'], $missing, $maxResults, $selectedCategory, $maxPriceCents, $memberships
+            // Pagination: 10 pro Seite; invalide page-Werte werden geclampt.
+            $pageParam = isset($_GET['page']) ? (string) $_GET['page'] : '1';
+            $page = ctype_digit($pageParam) ? max(1, (int) $pageParam) : 1;
+
+            $total = $productRepo->countEligible(
+                $shop['id'], $missing, $maxPriceCents, $selectedCategory, $memberships
             );
-            $total = $productRepo->countEligible($shop['id'], $missing, $maxPriceCents);
+            $totalPages = max(1, (int) ceil($total / 10));
+            $page = min($page, $totalPages);
+
+            $products = $productRepo->eligibleProducts(
+                $shop['id'], $missing, 10, $selectedCategory, $maxPriceCents, $memberships, $page
+            );
 
             $results = [
                 'free_reached' => false,
                 'products' => $products,
                 'total' => $total,
                 'missing_cents' => $missing,
+                'page' => $page,
+                'total_pages' => $totalPages,
             ];
         }
     }

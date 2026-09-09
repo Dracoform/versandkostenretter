@@ -160,7 +160,7 @@ $check('missing memberships table reads fail-soft to []',
     $bareRepo->categoryMemberships(1) === []);
 
 /* 6. Distinct categories union (memberships + column) */
-$cats = $prodRepo->distinctCategories(1, $repo->categoryMemberships(1));
+$cats = $prodRepo->visibleCategories(1, 500, 700, $repo->categoryMemberships(1));
 sort($cats);
 $check('distinct categories include membership-only categories',
     in_array('Pinsel', $cats, true) && in_array('Farben Zubehör', $cats, true),
