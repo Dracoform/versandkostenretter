@@ -95,11 +95,26 @@ require __DIR__ . '/layout_header.php';
   <?php endif; ?>
 
   <?php // Price-window toggle: stateless GET link, preserves shop/cart/category. ?>
+  <?php
+  // Toggle-Query sauber aufbauen: shop/cart immer, category nur wenn gesetzt
+  // (category= als LEERER String bedeutet "Alle" und würde die Auswahl
+  // verwerfen). expanded nur im Gegenmodus.
+  $toggleParams = static function (bool $expand) use ($shop, $cartRaw, $selectedCategory): string {
+      $params = ['shop' => $shop['slug'], 'cart' => $cartRaw];
+      if ($selectedCategory !== null && $selectedCategory !== '') {
+          $params['category'] = $selectedCategory;
+      }
+      if ($expand) {
+          $params['expanded'] = '1';
+      }
+      return http_build_query($params);
+  };
+  ?>
   <p class="price-mode-toggle">
     <?php if ($expanded): ?>
-      <a href="/?<?= http_build_query(['shop' => $shop['slug'], 'cart' => $cartRaw, 'category' => $selectedCategory ?? '']) ?>">Nur die günstigsten Füller anzeigen</a>
+      <a href="/?<?= $toggleParams(false) ?>">Nur die günstigsten Füller anzeigen</a>
     <?php else: ?>
-      <a href="/?<?= http_build_query(['shop' => $shop['slug'], 'cart' => $cartRaw, 'category' => $selectedCategory ?? '', 'expanded' => '1']) ?>">Mehr Auswahl anzeigen</a>
+      <a href="/?<?= $toggleParams(true) ?>">Mehr Auswahl anzeigen</a>
     <?php endif; ?>
   </p>
 
