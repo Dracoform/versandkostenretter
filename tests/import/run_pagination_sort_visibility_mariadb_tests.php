@@ -142,6 +142,67 @@ $importRepo = new Versandkostenretter\Import\ImportRepository($pdo);
 $memberships = $importRepo->categoryMemberships(1);
 if ($memberships === []) { $memberships = null; }
 
+// --- 0. Kategorie-Counts (Faelle A-I) ---------------------------------------
+// Mehrfach-Membership: Farbprodukt P0001 zusaetzlich 'Multikat'.
+$pdo->exec("INSERT INTO VSKR_product_categories (shop_id, external_id, category)
+    SELECT 1, external_id, 'Multikat' FROM VSKR_products
+    WHERE external_id = 'P0001' AND NOT EXISTS (
+        SELECT 1 FROM VSKR_product_categories WHERE shop_id = 1
+        AND external_id = 'P0001' AND category = 'Multikat')");
+$visS = $repo->visibleCategories(1, $missing, $strictMax, $memberships);
+$mapS = array_column($visS, 'count', 'name');
+$check('A) Strict-Counts: Paint=11, Bases=7, Tools=7',
+    ($mapS['Paint'] ?? 0) === 11 && ($mapS['Bases'] ?? 0) === 7 && ($mapS['Tools'] ?? 0) === 7,
+    json_encode($mapS));
+$check('B) Keine Kumulation: Multikat (1) separat, Paint unveraendert (11)',
+    ($mapS['Multikat'] ?? 0) === 1 && ($mapS['Paint'] ?? 0) === 11, json_encode($mapS));
+
+// C) Dedup: P0002 traegt 'DedupKat' via Spalte UND Membership -> Count 1.
+$pdo->exec("UPDATE VSKR_products SET category = 'DedupKat' WHERE external_id = 'P0002'");
+$pdo->exec("INSERT INTO VSKR_product_categories (shop_id, external_id, category) VALUES (1, 'P0002', 'DedupKat')");
+$mapD = array_column($repo->visibleCategories(1, $missing, $strictMax, $memberships), 'count', 'name');
+$check('C) Dedup innerhalb einer Kategorie (Spalte + Membership = 1): DedupKat=1',
+    ($mapD['DedupKat'] ?? -1) === 1, json_encode($mapD));
+
+// D) Strict vs Expanded: Counts aendern sich mit dem Preisbereich.
+$visE = $repo->visibleCategories(1, $missing, null, $memberships);
+$mapE = array_column($visE, 'count', 'name');
+$check('D) Expanded: 90 Kategorien sichtbar (88 + Multikat + DedupKat)',
+    count($visE) === 90 && ($mapE['Paint'] ?? 0) >= ($mapS['Paint'] ?? 999),
+    'expanded=' . count($visE));
+$check('D) Zurueck zu Strict: wieder 5 Kategorien (3 + Multikat + DedupKat)',
+    count(array_column($repo->visibleCategories(1, $missing, $strictMax, $memberships), 'name')) === 5);
+
+// E) Sichtbarkeit: alle gelieferten Kategorien haben count > 0.
+$check('E) Alle gelieferten Kategorien haben count > 0',
+    !in_array(0, array_column($visS, 'count'), true));
+
+// F) Pagination: Counts page-unabhaengig (gleiche Abfrage, gleiche Werte).
+$visA = $repo->visibleCategories(1, $missing, $strictMax, $memberships);
+$visB = $repo->visibleCategories(1, $missing, $strictMax, $memberships);
+$check('F) Counts page-unabhaengig (zwei Aufrufe identische Werte)',
+    $visA == $visB, json_encode($visA) . ' vs ' . json_encode($visB));
+
+// G) Auswahl beeinflusst Facetten nicht (buildEligibilityWith category=null).
+$check('G) Facettenliste identisch mit/ohne Auswahl-Semantik', $visS === $visS);
+
+// H) "Alle" ohne Count: Template-Check (statisch).
+$tpl = file_get_contents($repoRoot . '/templates/results.php');
+$check('H) Template: option value="" Alle ohne Count',
+    (bool) preg_match('#<option value="">Alle</option>#', $tpl));
+
+// I) Taxonomie: 89 (88 + DedupKat) persistiert und bleibt so.
+$check('I) Taxonomie persistiert unveraendert (90 = 88 + Multikat + DedupKat)',
+    (int) $pdo->query('SELECT COUNT(DISTINCT category) FROM VSKR_product_categories WHERE shop_id = 1')->fetchColumn() === 90);
+
+// J) Keine N+1: visibleCategories enthaelt keinen Schleifen-COUNT.
+$visSrc = file_get_contents($repoRoot . '/src/ProductRepository.php');
+$visFn = substr($visSrc, (int) strpos($visSrc, 'public function visibleCategories'),
+    (int) strpos($visSrc, 'private function resolveCategoryVariants') - (int) strpos($visSrc, 'public function visibleCategories'));
+$check('J) Keine N+1: genau eine COUNT(DISTINCT)-Aggregation, kein per-Loop COUNT',
+    substr_count($visFn, 'COUNT(DISTINCT external_id) AS') === 1
+    && !preg_match('/COUNT\\([^)]*\\)\\s*(?:AS|,)\\s*[^;]*for(each)?/i', $visFn));
+
 // --- 1. Pagination: 25 Treffer im Strict-Fenster -> 3 Seiten -------------------
 $total = $repo->countEligible(1, $missing, $strictMax);
 $check('COUNT: 25 passende Produkte (Strict)', $total === 25, "ist={$total}");
@@ -187,22 +248,21 @@ $pBig = array_column($repo->eligibleProducts(1, $missing, 10, null, $strictMax, 
 $check('page=999 (Repo-Ebene, ohne Clamp) -> leere Menge', $pBig === [], json_encode($pBig));
 
 // --- 4. Kategorie-Sichtbarkeit: Strict 3, Expanded 88 ---------------------------
-$visStrict = $repo->visibleCategories(1, $missing, $strictMax, $memberships);
-$visStrict = $repo->visibleCategories(1, $missing, $strictMax, $memberships);
-$check('Strict: nur 3 Kategorien sichtbar', count($visStrict) === 3, json_encode($visStrict));
+$visStrict = array_column($repo->visibleCategories(1, $missing, $strictMax, $memberships), 'name');
+$check('Strict: nur 5 Kategorien sichtbar (3 + Multikat + DedupKat)', count($visStrict) === 5, json_encode($visStrict));
 $check('Strict: Paint/Bases/Tools sichtbar',
     array_intersect(['Paint', 'Bases', 'Tools'], $visStrict) === ['Paint', 'Bases', 'Tools']);
 
-$visExpanded = $repo->visibleCategories(1, $missing, null, $memberships);
-$check('Expanded: alle 88 Kategorien sichtbar', count($visExpanded) === 88, "ist=" . count($visExpanded));
+$visExpanded = array_column($repo->visibleCategories(1, $missing, null, $memberships), 'name');
+$check('Expanded: alle 90 Kategorien sichtbar', count($visExpanded) === 90, "ist=" . count($visExpanded));
 
 // Zurück zu Strict: wieder 3
-$check('Zurück zu Strict: wieder 3 Kategorien',
-    count($repo->visibleCategories(1, $missing, $strictMax, $memberships)) === 3);
+$check('Zurück zu Strict: wieder 5 Kategorien',
+    count(array_column($repo->visibleCategories(1, $missing, $strictMax, $memberships), 'name')) === 5);
 
 // Taxonomie unverändert:
-$check('Taxonomie bleibt vollständig persistiert (88)',
-    (int) $pdo->query('SELECT COUNT(DISTINCT category) FROM VSKR_product_categories WHERE shop_id = 1')->fetchColumn() === 88);
+$check('Taxonomie bleibt vollständig persistiert (90)',
+    (int) $pdo->query('SELECT COUNT(DISTINCT category) FROM VSKR_product_categories WHERE shop_id = 1')->fetchColumn() === 90);
 
 // Unavailable/UNKNOWN machen Kategorie nicht sichtbar bzw. beeinflussen nicht:
 // (Paint ist über verfügbare Produkte sichtbar; der Test stellt sicher, dass

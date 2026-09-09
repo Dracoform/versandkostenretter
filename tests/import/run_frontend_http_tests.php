@@ -179,7 +179,16 @@ $check('P) Seitenlink enthält category und expanded',
     (bool) preg_match('#href="/\?shop=lootforge&cart=95&page=[12]&category=Filler\+Category&expanded=1"#', $rPF['body']),
     'Link-State unvollständig');
 
-// Kategorie-Dropdown dynamisch: nur Kategorien mit Treffern im aktuellen Modus
+// === Kategorie-Counts (Facetten) =============================================
+// Label enthaelt Count, value bleibt sauber:
+$check('CNT) Label enthaelt Count: "Filler Category (20)"',
+    (bool) preg_match('#<option value="Filler Category"[^>]*>\\s*Filler Category \\(20\\)#', $rE['body']),
+    'Label-Count fehlt');
+$check('CNT) value bleibt sauber ohne Count',
+    !preg_match('#option value="[^"]*\\([0-9]+\\)"#', $rE['body']));
+$check('CNT) "Alle" ohne Count', (bool) str_contains($rE['body'], '<option value="">Alle</option>'));
+
+
 $opts = static function (string $body): array {
     preg_match_all('#<option value="([^"]*)"#', $body, $m);
     return array_filter($m[1], static fn ($v) => $v !== '');

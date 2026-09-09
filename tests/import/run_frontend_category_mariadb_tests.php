@@ -113,7 +113,7 @@ echo 'memberships geladen: ' . (is_array($memberships) ? count($memberships) . '
 $categoriesAsIndex = []; // alter Production-Pfad (ohne Memberships) — für Root-Cause-Beweis leer
 echo 'distinctCategories wie index.php (ohne Memberships): ' . json_encode($categoriesAsIndex, JSON_UNESCAPED_UNICODE) . "\n";
 // SO SOLL ES SEIN:
-$categoriesCorrect = $prodRepo->visibleCategories(1, 500, 700, $memberships);
+$categoriesCorrect = array_column($prodRepo->visibleCategories(1, 500, 700, $memberships), 'name');
 echo 'distinctCategories mit Memberships:                  ' . json_encode($categoriesCorrect, JSON_UNESCAPED_UNICODE) . "\n";
 
 // Production-Beweis: mit der ALTEN Basis (ohne Memberships) resolved die

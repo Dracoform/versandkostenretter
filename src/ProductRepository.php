@@ -188,24 +188,28 @@ final class ProductRepository
     ): array {
         // SICHTBARKEIT != TAXONOMIE: die vollständige Taxonomie bleibt
         // persistiert; hier werden nur die Kategorien bestimmt, die unter den
-        // AKTUELLEN Eligibility-Bedingungen mindestens einen Treffer haben.
-        // Eine einzige Query (kein N+1).
+        // AKTUELLEN Eligibility-Bedingungen mindestens einen Treffer haben,
+        // inkl. Trefferzahl pro Kategorie.
+        // Eine einzige Query (kein N+1): UNION ALL der beiden Zuordnungs-
+        // pfade + äußeres GROUP BY mit COUNT(DISTINCT external_id) — damit
+        // zählt ein Produkt, das über Spalte UND Membership dieselbe
+        // Kategorie erhält, nur einmal.
         [$where, $params] = $this->buildEligibilityWhere(
             $shopId, $minPriceCents, $maxPriceCents, null, null
         );
 
-        // Teil 1: Kategorien aus der products.category-Spalte (Fallback).
-        $parts = ['SELECT DISTINCT category
+        // Teil 1: Zuordnung über die products.category-Spalte (Fallback).
+        $parts = ['SELECT external_id, category
                    FROM VSKR_products ' . $where . "
                    AND category IS NOT NULL AND category <> ''"];
 
-        // Teil 2: Kategorien aus der Membership-Tabelle, soweit der tragende
+        // Teil 2: Zuordnung über die Membership-Tabelle, soweit der tragende
         // Produkt-Eintrag selbst die Eligibility-Bedingungen erfüllt.
         if ($categoryMemberships !== null && $categoryMemberships !== []) {
             [$whereP, $paramsP] = $this->buildEligibilityWhere(
                 $shopId, $minPriceCents, $maxPriceCents, null, null, 'p.'
             );
-            // Union-Teile brauchen DISJIKTE Platzhalternamen (MySQL native
+            // UNION-ALL-Teile brauchen DISJIKTE Platzhalternamen (MySQL native
             // prepares erlaubt keinen Namen zweimal): Suffix _p2 fuer alle.
             $whereP = str_replace(':', ':p2_', $whereP);
             $renamed = [];
@@ -213,7 +217,7 @@ final class ProductRepository
                 $renamed[':p2_' . substr($k, 1)] = $v;
             }
             $paramsP = $renamed;
-            $parts[] = 'SELECT DISTINCT pc.category
+            $parts[] = 'SELECT p.external_id, pc.category
                         FROM VSKR_product_categories pc
                         JOIN VSKR_products p
                           ON p.shop_id = pc.shop_id AND p.external_id = pc.external_id ' . $whereP . "
@@ -225,17 +229,29 @@ final class ProductRepository
             $params[':shop_id_pc'] = [$shopId, PDO::PARAM_INT];
         }
 
-        $sql = implode(' UNION ', $parts) . ' ORDER BY category ASC';
+        // Äußere Aggregation: ein Produkt zählt pro Kategorie genau einmal
+        // (COUNT(DISTINCT external_id)), auch wenn beide Pfade es liefern.
+        // Mehrfach-Memberships zählen bewusst pro Kategorie einzeln (kein
+        // kategorie-übergreifender Roll-up). Keine Sortierung nach Count.
+        $sql = 'SELECT category, COUNT(DISTINCT external_id) AS hits
+                FROM (' . implode(' UNION ALL ', $parts) . ') AS facet
+                GROUP BY category
+                ORDER BY category ASC';
         $stmt = $this->db->pdo()->prepare($sql);
         foreach ($params as $key => $value) {
             $stmt->bindValue($key, $value[0], $value[1]);
         }
         $stmt->execute();
 
-        return array_values(array_unique(array_map(
-            'strval',
-            (array) $stmt->fetchAll(PDO::FETCH_COLUMN)
-        )));
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $out = [];
+        foreach ($rows as $row) {
+            $name = (string) $row['category'];
+            if ($name !== '') {
+                $out[] = ['name' => $name, 'count' => (int) $row['hits']];
+            }
+        }
+        return $out;
     }
 
     /**

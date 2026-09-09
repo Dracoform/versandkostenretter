@@ -89,9 +89,10 @@ require __DIR__ . '/layout_header.php';
       <label for="category">Kategorie:</label>
       <select id="category" name="category" data-autosubmit="1">
         <option value="">Alle</option>
-        <?php foreach ($categories as $cat): ?>
-          <option value="<?= View::e($cat) ?>" <?= ($selectedCategory ?? null) === $cat ? 'selected' : '' ?>>
-            <?= View::e($cat) ?>
+        <?php foreach ($categoryFacets as $facet): ?>
+          <?php // value = exakter Kategoriename (ohne Count); Count nur im Label. ?>
+          <option value="<?= View::e($facet['name']) ?>" <?= ($selectedCategory ?? null) === $facet['name'] ? 'selected' : '' ?>>
+            <?= View::e($facet['name']) ?> (<?= (int) $facet['count'] ?>)
           </option>
         <?php endforeach; ?>
       </select>
