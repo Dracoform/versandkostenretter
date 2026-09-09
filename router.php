@@ -14,7 +14,7 @@ $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
 $file = __DIR__ . $path;
 
 // Serve real static files directly (css/js/images) — but only public ones.
-$protectedDirs = ['src', 'templates', 'tests', 'database', 'config', 'assets-design', 'bin'];
+$protectedDirs = ['src', 'templates', 'tests', 'database', 'config', 'assets-design', 'bin', 'docs'];
 foreach ($protectedDirs as $dir) {
     if ($path === '/' . $dir || str_starts_with($path, '/' . $dir . '/')) {
         http_response_code(404);
