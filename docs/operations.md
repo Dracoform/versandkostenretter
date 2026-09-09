@@ -137,6 +137,60 @@ Shop-level configuration lives in `VSKR_shops` (shipping cost/threshold,
 source config, affiliate config — disabled by default, merchant-image display
 permission — default off), not in files.
 
+## Scheduled imports (cron wrapper)
+
+`bin/cron-import-shop.sh` is the wrapper for Plesk scheduled tasks. It runs
+the PHP importer for one shop, writes a dedicated log per run, detects
+problems and sends a monitoring mail via curl/SMTP **only on problems**
+(successful runs send no mail). No locking: the host has no `flock`; the
+residual overlap risk with two daily runs is explicitly accepted.
+
+```bash
+bin/cron-import-shop.sh <shop-handle>
+```
+
+- **Log path:** `<repo>/storage/import-logs/<shop>-<YYYYMMDD>-<HHMMSS>-<pid>.log`
+  (outside the public web root; `storage/` is gitignored and HTTP-denied).
+  stdout + stderr of the import run go into this single file.
+- **Retention:** logs older than 30 days matching `<shop>-*.log` are deleted
+  after each run (`find -mtime +30 -delete`). Foreign files and other shops'
+  logs are never touched.
+- **Monitoring mail** is sent when:
+  - the import exits non-zero (source/db/config/lock failures), or
+  - the output contains `Membership sync: SKIPPED` (fail-closed enrichment —
+    existing memberships were kept, catalogue possibly outdated), or
+  - enrichment warnings are present (current CLI emits them together with the
+    SKIPPED block).
+  Note: `Errors: 0` alone does NOT mean the enrichment ran; always check the
+  membership-sync state.
+- **Mail content:** subject `[VSKR] Importproblem: <shop>`, timestamp, shop,
+  exit code, detected reason, and the full output of exactly this run.
+- **Mail delivery:** `/usr/bin/curl --ssl-reqd --netrc-file
+  ~/.config/versandkostenretter/.netrc` against
+  `smtp://mx2f6e.netcup.net:587` (STARTTLS), sender and recipient
+  `monitoring@versandkostenretter.de`. Credentials live only in the `.netrc`
+  outside the repository; the wrapper never reads or prints them. If the mail
+  delivery itself fails, the failure is documented in the run log, a message
+  goes to stderr (visible in Plesk) and the wrapper exits 5.
+- **Config overrides via environment:** `CRON_IMPORT_PHP`,
+  `CRON_IMPORT_LOG_DIR`, `CRON_IMPORT_LOG_DAYS`, `CRON_IMPORT_NETRC`,
+  `CRON_IMPORT_SMTP`, `CRON_IMPORT_MAIL_FROM`, `CRON_IMPORT_MAIL_TO`,
+  `CRON_IMPORT_CURL`.
+
+**Recommended Plesk scheduled tasks (twice daily):**
+
+```
+bin/cron-import-shop.sh lootforge        # e.g. 04:30
+bin/cron-import-shop.sh lootforge        # e.g. 16:30
+```
+
+(In Plesk as "PHP script" or shell command task with the full absolute path,
+e.g. `/versandkostenretter.de/httpdocs/bin/cron-import-shop.sh lootforge`.)
+
+Regression: `tests/import/run_cron_wrapper_tests.php` covers success (no
+mail), non-zero exit, SKIPPED, warnings, per-run mail content, failed mail
+delivery, handle validation, retention scoping and credential handling.
+
 ## Operator procedures
 
 **Full shop import (e.g. after a long pause):**
