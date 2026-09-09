@@ -1,0 +1,16 @@
+# ============================================================================
+# Versandkostenretter — HTTP access guard for docs/
+#
+# Documentation is part of the repository and therefore part of the deployment
+# directory (document root = repository root), but it must NEVER be served
+# over HTTP. This rule denies the ENTIRE directory for any file type —
+# current documentation (.md) and any future artefacts (.txt, .json, diagrams,
+# images, ...).
+#
+# The global root .htaccess additionally blocks sensitive file types
+# (incl. .md) everywhere; this file is the directory-level defense-in-depth
+# layer. The HTTP exposure suite (tests/check_http_exposure.php) proves the
+# blocking over real HTTP.
+# ============================================================================
+
+Require all denied
