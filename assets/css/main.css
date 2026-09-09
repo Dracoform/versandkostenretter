@@ -234,6 +234,19 @@ main {
   max-width: 16rem;
 }
 .category-filter select:focus { border-color: var(--teal-500); outline: none; }
+.price-mode-toggle { margin: .75rem 0 1.25rem; }
+.price-mode-toggle a {
+  display: inline-block;
+  padding: .45rem .9rem;
+  border: 1px solid var(--teal-500);
+  border-radius: 999px;
+  color: var(--teal-700);
+  text-decoration: none;
+}
+.price-mode-toggle a:hover, .price-mode-toggle a:focus {
+  background: var(--teal-50, #f0fdfa);
+  text-decoration: underline;
+}
 
 /* --- results -------------------------------------------------------------------- */
 .results-heading { font-size: 1.2rem; color: var(--teal-900); margin: 1.5rem 0 .75rem; }
