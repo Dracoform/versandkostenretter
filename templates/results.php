@@ -76,6 +76,11 @@ require __DIR__ . '/layout_header.php';
     <?= $expanded ? '' : 'bis ' . Money::formatEuro($missing + 200) ?>
   </h2>
 
+  <?php // Ergebnis-Text: Gesamtzahl + Seite (statt "weitere Produkte"-Hinweis). ?>
+  <p class="results-count">
+    <?= (int) $results['total'] ?> passende Produkte gefunden<?= ($results['total_pages'] ?? 1) > 1 ? ' – Seite ' . (int) $results['page'] . ' von ' . (int) $results['total_pages'] : '' ?>
+  </p>
+
   <?php if (!empty($categories)): ?>
     <form method="get" action="/" class="category-filter">
       <input type="hidden" name="shop" value="<?= View::e($shop['slug']) ?>">
@@ -175,8 +180,44 @@ require __DIR__ . '/layout_header.php';
         </li>
       <?php endforeach; ?>
     </ul>
-    <?php if (($results['total'] ?? 0) > count($results['products'])): ?>
-      <p class="more-hint">Es gibt noch <?= (int) $results['total'] - count($results['products']) ?> weitere passende Produkte – es werden die günstigsten <?= count($results['products']) ?> angezeigt.</p>
+    <?php // Pagination: kompakte klassische Navigation, kompletter URL-State. ?>
+    <?php if (($results['total_pages'] ?? 1) > 1):
+      $currentPage = (int) $results['page'];
+      $lastPage = (int) $results['total_pages'];
+      $linkParams = static function (int $p) use ($shop, $cartRaw, $selectedCategory, $expanded): string {
+          $params = ['shop' => $shop['slug'], 'cart' => $cartRaw, 'page' => $p];
+          if ($selectedCategory !== null && $selectedCategory !== '') {
+              $params['category'] = $selectedCategory;
+          }
+          if ($expanded) {
+              $params['expanded'] = '1';
+          }
+          return http_build_query($params);
+      };
+      // Kompaktes Fenster: aktuelle Seite +/- 2, erste/letzte immer, Lücken als …
+      $pages = [];
+      for ($p = max(1, $currentPage - 2); $p <= min($lastPage, $currentPage + 2); $p++) {
+          $pages[] = $p;
+      }
+      if (!in_array(1, $pages, true)) { array_unshift($pages, 1); }
+      if (!in_array($lastPage, $pages, true)) { $pages[] = $lastPage; }
+    ?>
+    <nav class="pagination" aria-label="Ergebnisseiten">
+      <?php if ($currentPage > 1): ?>
+        <a href="/?<?= $linkParams($currentPage - 1) ?>" rel="prev" aria-label="Vorherige Seite">&lsaquo;</a>
+      <?php endif; ?>
+      <?php foreach ($pages as $i => $p):
+        if ($i > 0 && $p - $pages[$i - 1] > 1): ?><span class="pagination-ellipsis">&hellip;</span><?php endif; ?>
+        <?php if ($p === $currentPage): ?>
+          <span class="pagination-current" aria-current="page"><?= $p ?></span>
+        <?php else: ?>
+          <a href="/?<?= $linkParams($p) ?>"><?= $p ?></a>
+        <?php endif; ?>
+      <?php endforeach; ?>
+      <?php if ($currentPage < $lastPage): ?>
+        <a href="/?<?= $linkParams($currentPage + 1) ?>" rel="next" aria-label="Nächste Seite">&rsaquo;</a>
+      <?php endif; ?>
+    </nav>
     <?php endif; ?>
 
     <p class="disclaimer">

@@ -31,69 +31,32 @@ final class ProductRepository
         int $limit,
         ?string $category = null,
         ?int $maxPriceCents = null,
-        ?array $categoryMemberships = null
+        ?array $categoryMemberships = null,
+        int $page = 1
     ): array {
         if ($shopId <= 0) {
             throw new RuntimeException('Invalid shop id.');
         }
-        if ($limit < 1 || $limit > 200) {
-            $limit = 24;
-        }
+        $perPage = max(1, min(200, $limit));
+        $page = max(1, $page);
+        $offset = ($page - 1) * $perPage;
 
+        [$where, $params] = $this->buildEligibilityWhere(
+            $shopId, $minPriceCents, $maxPriceCents, $category, $categoryMemberships
+        );
+
+        // Deterministische Reihenfolge: price ASC, dann vollständiger Name
+        // case-insensitive (utf8mb4_*_ci-Collation), dann external_id als
+        // finaler stabiler Tie-Breaker. Merchant data bleibt opaque: keine
+        // Prefix-/Suffix-Manipulation.
         $sql = 'SELECT id, external_id, name, url, price, category, image_url
-                FROM VSKR_products
-                WHERE shop_id = :shop_id
-                  AND available = 1
-                  AND price >= :min_price';
-        if ($maxPriceCents !== null) {
-            // Filler-item price window (default mode): missing <= price <= missing + X.
-            $sql .= ' AND price <= :max_price';
-        }
-        if ($category !== null && $categoryMemberships !== null) {
-            // Many-to-many membership: match the category against EVERY stored
-            // variant (single column + memberships), case-insensitively.
-            $variants = $this->resolveCategoryVariants($shopId, $category, $categoryMemberships);
-            if ($variants === []) {
-                return []; // category exists but no product carries it
-            }
-            $placeholders = implode(',', array_map(
-                static fn (int $i): string => ':cat' . $i,
-                array_keys($variants)
-            ));
-            // Membership-aware: a product matches when it carries the
-            // category via the single column OR via any stored collection.
-            // Eigene Platzhalternamen im Subquery: MySQL native prepares
-            // (ATTR_EMULATE_PREPARES = false) erlauben keinen named
-            // Placeholder zweimal im Statement.
-            $subPlaceholders = implode(',', array_map(
-                static fn (int $i): string => ':mcat' . $i,
-                array_keys($variants)
-            ));
-            $sql .= " AND (category IN ($placeholders)
-                     OR external_id IN (
-                        SELECT external_id FROM VSKR_product_categories
-                         WHERE shop_id = :shop_id_mc AND category IN ($subPlaceholders)
-                     ))";
-            $catBind = $variants;
-        } elseif ($category !== null) {
-            $sql .= ' AND category = :category';
-        }
-        $sql .= ' ORDER BY price ASC, id ASC LIMIT ' . (int) $limit;
+                FROM VSKR_products ' . $where . '
+                ORDER BY price ASC, name ASC, external_id ASC
+                LIMIT ' . $perPage . ' OFFSET ' . $offset;
 
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->bindValue(':shop_id', $shopId, PDO::PARAM_INT);
-        $stmt->bindValue(':min_price', Money::centsToDecimal($minPriceCents));
-        if ($maxPriceCents !== null) {
-            $stmt->bindValue(':max_price', Money::centsToDecimal($maxPriceCents));
-        }
-        if ($category !== null && $categoryMemberships !== null) {
-            foreach ($catBind as $i => $v) {
-                $stmt->bindValue(':cat' . $i, $v);
-                $stmt->bindValue(':mcat' . $i, $v);
-            }
-            $stmt->bindValue(':shop_id_mc', $shopId, PDO::PARAM_INT);
-        } elseif ($category !== null) {
-            $stmt->bindValue(':category', $category);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value[0], $value[1]);
         }
         $stmt->execute();
         $rows = $stmt->fetchAll();
@@ -123,20 +86,86 @@ final class ProductRepository
     }
 
     /**
+     * Zentrale Eligibility-/WHERE-Logik für COUNT, Produktquery und die
+     * sichtbaren Kategorien — eine Implementierung, keine abweichenden Kopien.
+     *
+     * @return array{0:string,1:array<string,array{0:mixed,1:int}>} SQL-WHERE (mit 'WHERE ...') + Bind-Parameter [value, type]
+     */
+    private function buildEligibilityWhere(
+        int $shopId,
+        int $minPriceCents,
+        ?int $maxPriceCents,
+        ?string $category,
+        ?array $categoryMemberships,
+        string $tablePrefix = ''
+    ): array {
+        // $tablePrefix (z. B. 'p.') qualifiziert Spalten bei JOINs (MySQL
+        // wirft sonst 'ambiguous column' bei unqualifizierten Namen).
+        $t = $tablePrefix;
+        $sql = "WHERE {$t}shop_id = :shop_id AND {$t}available = 1 AND {$t}price >= :min_price";
+        $params = [
+            ':shop_id' => [$shopId, PDO::PARAM_INT],
+            ':min_price' => [Money::centsToDecimal($minPriceCents), PDO::PARAM_STR],
+        ];
+        if ($maxPriceCents !== null) {
+            // Filler-item price window (default mode): missing <= price <= missing + X.
+            $sql .= " AND {$t}price <= :max_price";
+            $params[':max_price'] = [Money::centsToDecimal($maxPriceCents), PDO::PARAM_STR];
+        }
+        if ($category !== null && $categoryMemberships !== null) {
+            // Many-to-many membership: match the category against EVERY stored
+            // variant (single column + memberships), case-insensitively.
+            $variants = $this->resolveCategoryVariants($shopId, $category, $categoryMemberships);
+            if ($variants !== []) {
+                // Eigene Platzhalternamen pro Vorkommen: MySQL native prepares
+                // (ATTR_EMULATE_PREPARES = false) erlauben keinen named
+                // Placeholder zweimal im Statement.
+                $placeholders = implode(',', array_map(
+                    static fn (int $i): string => ':cat' . $i,
+                    array_keys($variants)
+                ));
+                $subPlaceholders = implode(',', array_map(
+                    static fn (int $i): string => ':mcat' . $i,
+                    array_keys($variants)
+                ));
+                $sql .= " AND ({$t}category IN ($placeholders)
+                         OR {$t}external_id IN (
+                            SELECT external_id FROM VSKR_product_categories
+                             WHERE shop_id = :shop_id_mc AND category IN ($subPlaceholders)
+                         ))";
+                foreach ($variants as $i => $v) {
+                    $params[':cat' . $i] = [$v, PDO::PARAM_STR];
+                    $params[':mcat' . $i] = [$v, PDO::PARAM_STR];
+                }
+                $params[':shop_id_mc'] = [$shopId, PDO::PARAM_INT];
+            } else {
+                // Kategorie existiert, aber kein Produkt trägt sie -> garantiert
+                // leere Menge (immer falsche Bedingung).
+                $sql .= ' AND 1 = 0';
+            }
+        } elseif ($category !== null) {
+            $sql .= " AND {$t}category = :category";
+            $params[':category'] = [$category, PDO::PARAM_STR];
+        }
+        return [$sql, $params];
+    }
+
+    /**
      * How many more products would match beyond $limit (for "more available" hint).
      */
-    public function countEligible(int $shopId, int $minPriceCents, ?int $maxPriceCents = null): int
-    {
-        $sql = 'SELECT COUNT(*) FROM VSKR_products
-                WHERE shop_id = :shop_id AND available = 1 AND price >= :min_price';
-        if ($maxPriceCents !== null) {
-            $sql .= ' AND price <= :max_price';
-        }
-        $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->bindValue(':shop_id', $shopId, PDO::PARAM_INT);
-        $stmt->bindValue(':min_price', Money::centsToDecimal($minPriceCents));
-        if ($maxPriceCents !== null) {
-            $stmt->bindValue(':max_price', Money::centsToDecimal($maxPriceCents));
+    public function countEligible(
+        int $shopId,
+        int $minPriceCents,
+        ?int $maxPriceCents = null,
+        ?string $category = null,
+        ?array $categoryMemberships = null
+    ): int {
+        [$where, $params] = $this->buildEligibilityWhere(
+            $shopId, $minPriceCents, $maxPriceCents, $category, $categoryMemberships
+        );
+        $stmt = $this->db->pdo()->prepare('SELECT COUNT(*) FROM VSKR_products ' . $where);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value[0], $value[1]);
         }
         $stmt->execute();
 
@@ -151,28 +180,55 @@ final class ProductRepository
      *
      * @return list<string>
      */
-    public function distinctCategories(int $shopId, ?array $categoryMemberships = null): array
-    {
-        // Zwei separate named Parameter: MySQL native prepares (PDO
-        // ATTR_EMULATE_PREPARES = false) erlauben denselben named Placeholder
-        // nicht zweimal in einer Query.
-        $sql = "SELECT DISTINCT category FROM VSKR_products
-                WHERE shop_id = :shop_id1 AND available = 1
-                  AND category IS NOT NULL AND category <> ''";
-        if ($categoryMemberships !== null && $categoryMemberships !== []) {
-            $sql .= " UNION
-                   SELECT DISTINCT pc.category
-                     FROM VSKR_product_categories pc
-                     JOIN VSKR_products p
-                       ON p.shop_id = pc.shop_id AND p.external_id = pc.external_id
-                    WHERE pc.shop_id = :shop_id2 AND p.available = 1";
-        }
-        $sql .= ' ORDER BY category ASC';
+    public function visibleCategories(
+        int $shopId,
+        int $minPriceCents,
+        ?int $maxPriceCents = null,
+        ?array $categoryMemberships = null
+    ): array {
+        // SICHTBARKEIT != TAXONOMIE: die vollständige Taxonomie bleibt
+        // persistiert; hier werden nur die Kategorien bestimmt, die unter den
+        // AKTUELLEN Eligibility-Bedingungen mindestens einen Treffer haben.
+        // Eine einzige Query (kein N+1).
+        [$where, $params] = $this->buildEligibilityWhere(
+            $shopId, $minPriceCents, $maxPriceCents, null, null
+        );
 
-        $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->bindValue(':shop_id1', $shopId, PDO::PARAM_INT);
+        // Teil 1: Kategorien aus der products.category-Spalte (Fallback).
+        $parts = ['SELECT DISTINCT category
+                   FROM VSKR_products ' . $where . "
+                   AND category IS NOT NULL AND category <> ''"];
+
+        // Teil 2: Kategorien aus der Membership-Tabelle, soweit der tragende
+        // Produkt-Eintrag selbst die Eligibility-Bedingungen erfüllt.
         if ($categoryMemberships !== null && $categoryMemberships !== []) {
-            $stmt->bindValue(':shop_id2', $shopId, PDO::PARAM_INT);
+            [$whereP, $paramsP] = $this->buildEligibilityWhere(
+                $shopId, $minPriceCents, $maxPriceCents, null, null, 'p.'
+            );
+            // Union-Teile brauchen DISJIKTE Platzhalternamen (MySQL native
+            // prepares erlaubt keinen Namen zweimal): Suffix _p2 fuer alle.
+            $whereP = str_replace(':', ':p2_', $whereP);
+            $renamed = [];
+            foreach ($paramsP as $k => $v) {
+                $renamed[':p2_' . substr($k, 1)] = $v;
+            }
+            $paramsP = $renamed;
+            $parts[] = 'SELECT DISTINCT pc.category
+                        FROM VSKR_product_categories pc
+                        JOIN VSKR_products p
+                          ON p.shop_id = pc.shop_id AND p.external_id = pc.external_id ' . $whereP . "
+                        AND pc.shop_id = :shop_id_pc
+                        AND pc.category IS NOT NULL AND pc.category <> ''";
+            foreach ($paramsP as $k => $v) {
+                $params[$k] = $v;
+            }
+            $params[':shop_id_pc'] = [$shopId, PDO::PARAM_INT];
+        }
+
+        $sql = implode(' UNION ', $parts) . ' ORDER BY category ASC';
+        $stmt = $this->db->pdo()->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value[0], $value[1]);
         }
         $stmt->execute();
 

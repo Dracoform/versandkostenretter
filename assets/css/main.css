@@ -313,6 +313,19 @@ main {
 }
 .btn-secondary:hover { background: var(--orange); color: #fff; }
 .more-hint { color: var(--ink-soft); font-size: .9rem; }
+.results-count { color: var(--ink-soft); font-size: .9rem; margin: .25rem 0 1rem; }
+.pagination { display: flex; flex-wrap: wrap; gap: .35rem; margin: 1.25rem 0; align-items: center; }
+.pagination a, .pagination-current, .pagination-ellipsis {
+  min-width: 2.2rem;
+  padding: .35rem .55rem;
+  text-align: center;
+  border-radius: .5rem;
+  font-size: .95rem;
+}
+.pagination a { border: 1px solid var(--teal-200, #99f6e4); color: var(--teal-700); text-decoration: none; }
+.pagination a:hover, .pagination a:focus { background: var(--teal-50, #f0fdfa); }
+.pagination-current { background: var(--teal-500); color: #fff; font-weight: 600; }
+.pagination-ellipsis { color: var(--ink-soft); border: none; }
 .disclaimer {
   font-size: .8rem;
   color: var(--ink-soft);

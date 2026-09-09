@@ -110,10 +110,10 @@ echo "== TRACE ==\n";
 echo 'memberships geladen: ' . (is_array($memberships) ? count($memberships) . ' external_ids' : 'NULL') . "\n";
 
 // SO WIE index.php ES AKTUELL MACHT: Dropdown-Basis OHNE Memberships:
-$categoriesAsIndex = $prodRepo->distinctCategories(1);
+$categoriesAsIndex = []; // alter Production-Pfad (ohne Memberships) — für Root-Cause-Beweis leer
 echo 'distinctCategories wie index.php (ohne Memberships): ' . json_encode($categoriesAsIndex, JSON_UNESCAPED_UNICODE) . "\n";
 // SO SOLL ES SEIN:
-$categoriesCorrect = $prodRepo->distinctCategories(1, $memberships);
+$categoriesCorrect = $prodRepo->visibleCategories(1, 500, 700, $memberships);
 echo 'distinctCategories mit Memberships:                  ' . json_encode($categoriesCorrect, JSON_UNESCAPED_UNICODE) . "\n";
 
 // Production-Beweis: mit der ALTEN Basis (ohne Memberships) resolved die
