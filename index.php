@@ -319,9 +319,11 @@ function vskr_render_results(array $config, int $maxResults): void
             // Kategorie-SICHTBARKEIT folgt dem aktuellen Preis-Modus (Strict/
             // Expanded): nur Kategorien mit mindestens einem eligible Produkt.
             // Die vollstaendige Taxonomie bleibt in der DB unveraendert.
-            $categories = $productRepo->visibleCategories(
+            $categoryFacets = $productRepo->visibleCategories(
                 (int) $shop['id'], $missing, $maxPriceCents, $memberships
             );
+            // Resolve-Basis: reine Namen (isUsable/resolve erwarten Strings).
+            $categories = array_column($categoryFacets, 'name');
 
             // Case-insensitive matching against the stored categories —
             // fixes the production bug where the dropdown value's casing
